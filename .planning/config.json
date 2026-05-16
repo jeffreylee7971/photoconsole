@@ -1,0 +1,37 @@
+{
+  "project": {
+    "name": "PhotoConsole",
+    "version": "0.1.0",
+    "description": "Local-first Python CLI agent for photo/video cataloging, deduplication, and safe consolidation"
+  },
+  "workflow": {
+    "mode": "iterative",
+    "phases_enabled": true,
+    "research_required": false,
+    "focus": "scope-and-plan"
+  },
+  "scope": {
+    "mvp_phases": [1, 2],
+    "deferred_features": ["visual_clustering", "immich_integration", "photoprism_integration", "web_ui"],
+    "scale": "medium",
+    "scale_items": "10K-100K photos/videos"
+  },
+  "team": {
+    "user_type": "planning_focus",
+    "execution_preference": "less_execution",
+    "stakeholder_type": "personal_project"
+  },
+  "technical": {
+    "language": "python",
+    "interface": "cli",
+    "database": "sqlite",
+    "security_priority": "local_first",
+    "integrations_mvp": ["local_filesystem", "rclone"],
+    "integrations_future": ["immich", "photoprism"]
+  },
+  "preferences": {
+    "git_commit_style": "atomic",
+    "documentation_level": "detailed",
+    "testing_approach": "pragmatic"
+  }
+}
