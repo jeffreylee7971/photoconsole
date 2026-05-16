@@ -3,20 +3,19 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: in_progress
-last_updated: "2026-05-16T17:53:15.135Z"
+last_updated: "2026-05-16T18:01:11.534Z"
 progress:
   total_phases: 5
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 5
-  completed_plans: 3
-  last_plan_completed: 01-04
-  percent: 0
+  completed_plans: 5
+  percent: 20
 ---
 
 # PhotoConsole Project State
 
 **Project Started**: 2026-05-16  
-**Current Status**: Phase 1 In Progress — Plans 01, 02, 04 complete (3/5 plans)
+**Current Status**: Phase 1 Complete — All 5 plans executed (5/5 plans)
 
 ---
 
@@ -43,18 +42,15 @@ progress:
 
 ## Next Steps
 
-1. **Phase 1 Plan 03** → Hasher (sha256_file, process_file, process_files) — Wave 2, depends on Plans 01+02
-2. **Phase 1 Plan 05** → CLI entrypoint + scan command wiring — Wave 3
-
 ## Phase 1 Progress
 
 | Plan | Name | Status | Commit |
 |------|------|--------|--------|
 | 01-01 | Package skeleton, errors, constants, config | Done | ec647f9 |
-| 01-02 | SQLAlchemy ORM + catalog DB | Done | (d078929 incl. untracked catalog files) |
-| 01-03 | Scanner + hasher | Pending | — |
+| 01-02 | SQLAlchemy ORM + catalog DB | Done | d078929 |
+| 01-03 | File hasher, photo EXIF, video ffprobe | Done | 9a47711 |
 | 01-04 | LocalScanner, RcloneScanner, scan_all | Done | 37bee02 |
-| 01-05 | CLI entrypoint | Pending | — |
+| 01-05 | CLI entrypoint + scan command | Done | 13f9c30 |
 
 ---
 
@@ -106,9 +102,10 @@ All project files live under `PhotoConsole/` in the working directory:
 - ✅ Phase 1 Plan 01 executed — package skeleton, errors, constants, config loader (ec647f9)
 - ✅ Phase 1 Plan 02 executed — SQLAlchemy ORM + catalog DB with WAL mode + UPSERT + should_skip (d078929)
 - ✅ Phase 1 Plan 04 executed — LocalScanner, RcloneScanner, scan_all dispatcher (37bee02)
-- ⏳ Phase 1 Plans 03, 05 pending
+- ✅ Phase 1 Plan 03 executed — file hasher, photo EXIF extractor, video ffprobe extractor (9a47711)
+- ✅ Phase 1 Plan 05 executed — CLI scan command with incremental cataloging and preflight gates (13f9c30)
 
-**Phase 1 in progress. Plans 01, 02, 04 complete.**
+**Phase 1 complete. All 5 plans executed. `photoconsole scan --config config.yaml` is fully operational.**
 
 ## Key Decisions (from execution)
 
@@ -122,3 +119,7 @@ All project files live under `PhotoConsole/` in the working directory:
 - LocalScanner uses os.walk(followlinks=False) + dirs[:] in-place pruning + is_symlink() per file (T-04-02 / D-04)
 - RcloneScanner subprocess uses argv list form only; shell flag never set to True (T-04-01); timeout=300 configurable (T-04-03)
 - scan_all fail-fast on source error; ValueError for unknown source types
+- _run_scan is a pure helper (no click) enabling direct test invocation without CliRunner
+- ffprobe gate fires only when include_extensions & VIDEO_EXTENSIONS is non-empty (D-13); photo-only users bypass it entirely
+- rclone candidates always re-processed in Phase 1 (mtime=None → should_skip=False); rclone mtime deferred to Phase 2
+- All upsert_many calls on main thread only; worker threads return result dicts (T-02-02/T-05-02)
