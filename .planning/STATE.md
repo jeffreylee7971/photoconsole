@@ -3,19 +3,20 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: in_progress
-last_updated: "2026-05-16T17:51:29.469Z"
+last_updated: "2026-05-16T17:53:15.135Z"
 progress:
   total_phases: 5
   completed_phases: 0
   total_plans: 5
-  completed_plans: 2
+  completed_plans: 3
+  last_plan_completed: 01-04
   percent: 0
 ---
 
 # PhotoConsole Project State
 
 **Project Started**: 2026-05-16  
-**Current Status**: Phase 1 In Progress — Plans 01-02 complete (2/5 plans)
+**Current Status**: Phase 1 In Progress — Plans 01, 02, 04 complete (3/5 plans)
 
 ---
 
@@ -42,18 +43,17 @@ progress:
 
 ## Next Steps
 
-1. **Phase 1 Plan 03** → Scanner + hasher (Wave 2, depends on Plans 01+02)
-2. **Phase 1 Plan 04** → Metadata extraction (Wave 2, depends on Plans 01+02)
-3. **Phase 1 Plan 05** → CLI entrypoint + scan command wiring
+1. **Phase 1 Plan 03** → Hasher (sha256_file, process_file, process_files) — Wave 2, depends on Plans 01+02
+2. **Phase 1 Plan 05** → CLI entrypoint + scan command wiring — Wave 3
 
 ## Phase 1 Progress
 
 | Plan | Name | Status | Commit |
 |------|------|--------|--------|
 | 01-01 | Package skeleton, errors, constants, config | Done | ec647f9 |
-| 01-02 | SQLAlchemy ORM + catalog DB | Done | d078929 |
+| 01-02 | SQLAlchemy ORM + catalog DB | Done | (d078929 incl. untracked catalog files) |
 | 01-03 | Scanner + hasher | Pending | — |
-| 01-04 | Metadata extraction | Pending | — |
+| 01-04 | LocalScanner, RcloneScanner, scan_all | Done | 37bee02 |
 | 01-05 | CLI entrypoint | Pending | — |
 
 ---
@@ -105,9 +105,10 @@ All project files live under `PhotoConsole/` in the working directory:
 - ✅ Phase 1 plan created (5 PLAN.md files — 3 waves, committed 33a4be9)
 - ✅ Phase 1 Plan 01 executed — package skeleton, errors, constants, config loader (ec647f9)
 - ✅ Phase 1 Plan 02 executed — SQLAlchemy ORM + catalog DB with WAL mode + UPSERT + should_skip (d078929)
-- ⏳ Phase 1 Plans 03–05 pending
+- ✅ Phase 1 Plan 04 executed — LocalScanner, RcloneScanner, scan_all dispatcher (37bee02)
+- ⏳ Phase 1 Plans 03, 05 pending
 
-**Phase 1 in progress. Plans 01-02 complete.**
+**Phase 1 in progress. Plans 01, 02, 04 complete.**
 
 ## Key Decisions (from execution)
 
@@ -118,3 +119,6 @@ All project files live under `PhotoConsole/` in the working directory:
 - UPSERT uses sqlite dialect INSERT ON CONFLICT DO UPDATE; unknown keys raise ValueError (T-02-01)
 - should_skip returns False for status='error' rows regardless of mtime (D-03 error retry)
 - WAL mode + busy_timeout=5000ms set per-connection via SQLAlchemy event listener (T-02-02)
+- LocalScanner uses os.walk(followlinks=False) + dirs[:] in-place pruning + is_symlink() per file (T-04-02 / D-04)
+- RcloneScanner subprocess uses argv list form only; shell flag never set to True (T-04-01); timeout=300 configurable (T-04-03)
+- scan_all fail-fast on source error; ValueError for unknown source types

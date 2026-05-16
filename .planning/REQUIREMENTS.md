@@ -11,11 +11,11 @@
 **So that** I can discover all my media in one place  
 
 **Acceptance Criteria:**
-- [ ] Scan local filesystem paths recursively
-- [ ] Mount and scan rclone remote paths (Google Drive, OneDrive, Amazon Drive, iCloud)
-- [ ] Support configurable source list (file-based config or CLI args)
-- [ ] Skip non-image/video files (based on extension or MIME type)
-- [ ] Report progress and stats (items scanned, skipped, errors)
+- [x] Scan local filesystem paths recursively — LocalScanner (Plan 04)
+- [x] Mount and scan rclone remote paths (Google Drive, OneDrive, Amazon Drive, iCloud) — RcloneScanner (Plan 04)
+- [x] Support configurable source list (file-based config or CLI args) — Config.sources (Plan 01)
+- [x] Skip non-image/video files (based on extension or MIME type) — include_extensions filter (Plan 04)
+- [ ] Report progress and stats (items scanned, skipped, errors) — Plan 05 CLI
 
 **Technical Notes:**
 - Use `pathlib` for local paths, `rclone.py` or subprocess for rclone mounts
