@@ -50,6 +50,8 @@ Plans:
 
 **Goal**: Identify duplicates and consolidate media into a single master library.
 
+**Requirements**: [FR3, FR4, FR5, NFR1, NFR4]
+
 **Features**:
 - Exact duplicate detection (SHA256 hash comparison)
 - Duplicate reporting (groups, size, sources)
@@ -73,6 +75,17 @@ Plans:
 - ✅ No data loss in consolidation
 
 **Estimated Effort**: 2–3 weeks
+
+**Plans**: 7 plans across 6 waves
+
+Plans:
+- [ ] 02-01-PLAN.md — ConsolidationConfig dataclass + load_config extension for consolidation YAML section (Wave 1)
+- [ ] 02-02-PLAN.md — dedup.py: DuplicateGroup dataclass, classify_group(), find_duplicate_groups() (Wave 2)
+- [ ] 02-03-PLAN.md — consolidator.py part 1: compute_dest_path, resolve_conflict, copy_and_verify pure functions (Wave 3)
+- [ ] 02-04-PLAN.md — consolidator.py part 2: write_manifest, setup_consolidation_logger, check_destination_writable, run_consolidation orchestrator (Wave 4)
+- [ ] 02-05-PLAN.md — CLI extension: _run_report, report command, _run_consolidate, plan-consolidation, consolidate commands (Wave 5)
+- [ ] 02-06-PLAN.md — Unit tests: test_dedup.py + test_consolidator.py (Wave 5, parallel with 02-05)
+- [ ] 02-07-PLAN.md — CLI integration tests: test_cli_phase2.py covering all three new commands (Wave 6)
 
 ---
 
