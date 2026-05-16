@@ -10,6 +10,8 @@ PhotoConsole is built in iterative phases, starting with a minimal MVP (Phases 1
 
 **Goal**: Scan multiple sources and build a catalog of all media files.
 
+**Requirements**: [FR1, FR2, FR5, FR6]
+
 **Features**:
 - Local filesystem scanning (recursive, configurable paths)
 - Rclone mount integration (auto-detect configured remotes)
@@ -32,6 +34,15 @@ PhotoConsole is built in iterative phases, starting with a minimal MVP (Phases 1
 - ✅ Handle rclone mount paths without errors
 
 **Estimated Effort**: 2–3 weeks
+
+**Plans**: 5 plans across 3 waves
+
+Plans:
+- [ ] 01-01-PLAN.md — Package skeleton, errors enum, config dataclass + YAML loader, test fixtures (Wave 1)
+- [ ] 01-02-PLAN.md — Catalog persistence: SQLAlchemy MediaFile model, WAL engine, UPSERT + incremental skip (Wave 2)
+- [ ] 01-03-PLAN.md — Hashing + photo EXIF + video ffprobe metadata extractors, ThreadPoolExecutor orchestration (Wave 2)
+- [ ] 01-04-PLAN.md — LocalScanner + RcloneScanner with symlink skip and subprocess rclone integration (Wave 2)
+- [ ] 01-05-PLAN.md — CLI: click group, scan command, dependency gates, end-to-end writer-thread orchestration (Wave 3)
 
 ---
 
