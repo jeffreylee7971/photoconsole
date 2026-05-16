@@ -3,19 +3,19 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: in_progress
-last_updated: "2026-05-16T00:00:00.000Z"
+last_updated: "2026-05-16T17:51:29.469Z"
 progress:
   total_phases: 5
   completed_phases: 0
   total_plans: 5
-  completed_plans: 1
-  percent: 20
+  completed_plans: 2
+  percent: 0
 ---
 
 # PhotoConsole Project State
 
 **Project Started**: 2026-05-16  
-**Current Status**: 🟢 Phase 1 In Progress — Plan 01 complete (1/5 plans)
+**Current Status**: Phase 1 In Progress — Plans 01-02 complete (2/5 plans)
 
 ---
 
@@ -42,16 +42,16 @@ progress:
 
 ## Next Steps
 
-1. **Phase 1 Plan 02** → SQLAlchemy ORM models + catalog DB (Wave 1)
-2. **Phase 1 Plan 03** → Scanner + hasher (Wave 2, depends on Plans 01+02)
-3. **Phase 1 Plan 04** → Metadata extraction (Wave 2, depends on Plans 01+02)
+1. **Phase 1 Plan 03** → Scanner + hasher (Wave 2, depends on Plans 01+02)
+2. **Phase 1 Plan 04** → Metadata extraction (Wave 2, depends on Plans 01+02)
+3. **Phase 1 Plan 05** → CLI entrypoint + scan command wiring
 
 ## Phase 1 Progress
 
 | Plan | Name | Status | Commit |
 |------|------|--------|--------|
 | 01-01 | Package skeleton, errors, constants, config | Done | ec647f9 |
-| 01-02 | SQLAlchemy ORM + catalog DB | Pending | — |
+| 01-02 | SQLAlchemy ORM + catalog DB | Done | d078929 |
 | 01-03 | Scanner + hasher | Pending | — |
 | 01-04 | Metadata extraction | Pending | — |
 | 01-05 | CLI entrypoint | Pending | — |
@@ -104,13 +104,17 @@ All project files live under `PhotoConsole/` in the working directory:
 - ⏳ Git repository to be initialized in `PhotoConsole/`
 - ✅ Phase 1 plan created (5 PLAN.md files — 3 waves, committed 33a4be9)
 - ✅ Phase 1 Plan 01 executed — package skeleton, errors, constants, config loader (ec647f9)
-- ⏳ Phase 1 Plans 02–05 pending
+- ✅ Phase 1 Plan 02 executed — SQLAlchemy ORM + catalog DB with WAL mode + UPSERT + should_skip (d078929)
+- ⏳ Phase 1 Plans 03–05 pending
 
-**Phase 1 in progress. Plan 01 complete.**
+**Phase 1 in progress. Plans 01-02 complete.**
 
 ## Key Decisions (from execution)
 
 - ErrorType StrEnum with 6 members; classify_error excludes HASH_FAILED/METADATA_FAILED (set by call sites)
 - Config.include_extensions stored as frozenset; load_config normalizes extensions and expands paths
 - yaml.safe_load enforced (T-01-01); catalog_path os.path.abspath+expanduser (T-01-02)
-- conftest.py in_memory_engine is a stub returning None — Plan 02 overrides with real ORM engine factory
+- conftest.py in_memory_engine is a stub returning None — Plan 02 defines its own _make_in_memory_engine() helper in test_catalog.py
+- UPSERT uses sqlite dialect INSERT ON CONFLICT DO UPDATE; unknown keys raise ValueError (T-02-01)
+- should_skip returns False for status='error' rows regardless of mtime (D-03 error retry)
+- WAL mode + busy_timeout=5000ms set per-connection via SQLAlchemy event listener (T-02-02)

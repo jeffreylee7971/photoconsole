@@ -39,7 +39,7 @@ PhotoConsole is built in iterative phases, starting with a minimal MVP (Phases 1
 
 Plans:
 - [x] 01-01-PLAN.md — Package skeleton, errors enum, config dataclass + YAML loader, test fixtures (Wave 1) — DONE ec647f9
-- [ ] 01-02-PLAN.md — Catalog persistence: SQLAlchemy MediaFile model, WAL engine, UPSERT + incremental skip (Wave 2)
+- [x] 01-02-PLAN.md — Catalog persistence: SQLAlchemy MediaFile model, WAL engine, UPSERT + incremental skip (Wave 2)
 - [ ] 01-03-PLAN.md — Hashing + photo EXIF + video ffprobe metadata extractors, ThreadPoolExecutor orchestration (Wave 2)
 - [ ] 01-04-PLAN.md — LocalScanner + RcloneScanner with symlink skip and subprocess rclone integration (Wave 2)
 - [ ] 01-05-PLAN.md — CLI: click group, scan command, dependency gates, end-to-end writer-thread orchestration (Wave 3)
