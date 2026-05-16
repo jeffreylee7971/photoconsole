@@ -51,7 +51,7 @@ def test_sha256_streams_in_chunks(tmp_path):
 
         def read(self, n=-1):
             chunk = self._f.read(n)
-            if n > 0:
+            if n > 0 and chunk:  # Only record non-empty reads
                 read_calls.append(len(chunk))
             return chunk
 
