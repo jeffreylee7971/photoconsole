@@ -375,8 +375,14 @@ def copy_and_verify(src_path: str, dest_path: Path, expected_hash: str) -> bool:
 **What:** Write deletion manifest CSV and corresponding .bat file.
 **When to use:** `consolidator.py` after each successful copy (or batch after all copies).
 
+> **⚠ Plan 02-04 Task 1 SUPERSEDES this example.** The code below is a simplified reference only. The production implementation in Plan 02-04 Task 1 differs in three ways:
+> 1. `.bat` encoding must be `utf-8-sig` (BOM), not `utf-8` — required for Windows cmd.exe with accented paths (Pitfall 2)
+> 2. `.bat` header must include `chcp 65001 >nul` line after `@echo off`
+> 3. rclone-sourced rows must emit `:: rclone deletefile path` comments, not `del /f "path"` (Pitfall 6)
+> **Use Plan 02-04 Task 1 action as the definitive specification.**
+
 ```python
-# Source: verified [VERIFIED: bash test]
+# Source: verified [VERIFIED: bash test] — simplified reference only, see note above
 import csv, pathlib, datetime
 
 _MANIFEST_FIELDS = ['original_path', 'hash', 'destination_path', 'source_name']
@@ -392,14 +398,20 @@ def write_manifest(rows: list[dict], dest_dir: pathlib.Path) -> tuple[pathlib.Pa
         w.writeheader()
         w.writerows(rows)
 
-    with open(bat_path, 'w', encoding='utf-8') as f:
+    # NOTE: Production version uses encoding='utf-8-sig', adds 'chcp 65001 >nul',
+    # and routes rclone rows to ':: rclone deletefile ...' comments. See Plan 02-04 Task 1.
+    with open(bat_path, 'w', encoding='utf-8-sig') as f:
         f.write('@echo off\r\n')
+        f.write('chcp 65001 >nul\r\n')
         f.write(f':: PhotoConsole deletion manifest — generated {ts}\r\n')
         f.write(f':: Total files: {len(rows)}\r\n')
         f.write(':: Review carefully. Deletions are permanent.\r\n')
         f.write('\r\n')
         for row in rows:
-            f.write(f'del /f "{row["original_path"]}"\r\n')
+            if row.get('source_type', 'local') == 'rclone':
+                f.write(f':: rclone deletefile {row["original_path"]}\r\n')
+            else:
+                f.write(f'del /f "{row["original_path"]}"\r\n')
 
     return csv_path, bat_path
 ```
@@ -772,22 +784,16 @@ def print_report_text(groups: list[DuplicateGroup]) -> None:
 
 ---
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-1. **Where should `consolidation.log` live?**
-   - What we know: D-15 says "consolidation.log" but doesn't specify the path.
-   - What's unclear: Is it relative to the destination root, relative to the catalog, or in the CWD?
-   - Recommendation: Default to the same directory as the catalog (since that's already user-configured). Make it configurable as `consolidation.log_path` in the YAML if the user asks. Planner should choose the catalog-adjacent default and document it.
+1. **Where should `consolidation.log` live?** (RESOLVED)
+   - **Decision:** Default to `Path(config.catalog_path).parent / 'consolidation.log'` — catalog-adjacent. Optional `log_path` parameter in `run_consolidation` allows override. Not added to config YAML in Phase 2; user can configure via parameter if needed.
 
-2. **Should the deletion manifest CSV timestamp or be a fixed name?**
-   - What we know: D-11 says "deletion manifest CSV" without naming convention.
-   - What's unclear: If the user runs consolidate twice (after adding more files), do they want one accumulating CSV or two timestamped ones?
-   - Recommendation: Timestamped names (`deletion_manifest_20260516_141000.csv`) so each run produces a fresh manifest. Simplest for the user to identify which run produced which manifest.
+2. **Should the deletion manifest CSV timestamp or be a fixed name?** (RESOLVED)
+   - **Decision:** Timestamped filenames: `deletion_manifest_YYYYMMDD_HHMMSS.csv` and `delete_originals_YYYYMMDD_HHMMSS.bat`. Each run produces a new manifest; no accumulation or clobber.
 
-3. **What happens to files that fail post-copy hash verification?**
-   - What we know: D-10 says only hash-verified copies are considered consolidated. D-13 says no deletions.
-   - What's unclear: Does the corrupt destination copy get deleted automatically (to free space), or left for user review?
-   - Recommendation: Delete the corrupt destination copy automatically (the source is untouched and safe), log it as `outcome=hash_mismatch_dest_removed`, and report the error to the user in the summary. This is safe because the source is never touched.
+3. **What happens to files that fail post-copy hash verification?** (RESOLVED)
+   - **Decision:** Auto-delete the corrupt destination copy (source is always untouched). Log as `outcome=hash_mismatch_dest_removed`. Add `CopyAction(..., action='copy_hash_mismatch')` to `plan.errors`. Report in run summary.
 
 ---
 
