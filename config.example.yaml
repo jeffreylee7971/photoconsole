@@ -1,0 +1,44 @@
+# PhotoConsole — Example Configuration
+#
+# Copy this file to config.yaml and edit to match your setup.
+# Usage: photoconsole scan --config config.yaml
+#
+# Required fields: catalog_path, sources
+# All other fields are optional and show their defaults.
+
+# Where to store the SQLite catalog database.
+# The ~ is expanded to your home directory.
+catalog_path: ~/.photoconsole/catalog.db
+
+# Media sources to scan. Each source must have a name and type.
+# Supported types: local, rclone
+sources:
+  - name: "Local Photos"
+    type: local
+    path: /mnt/photos
+
+  - name: "Google Drive"
+    type: rclone
+    remote: "gdrive:"
+
+# File extensions to include (case-insensitive; dot prefix optional).
+# Defaults to all media extensions if omitted:
+#   .jpg .jpeg .png .gif .mp4 .mov .avi
+include_extensions:
+  - .jpg
+  - .jpeg
+  - .png
+  - .gif
+  - .mp4
+  - .mov
+  - .avi
+
+# Glob patterns to exclude from scanning (optional).
+# Uncomment and edit as needed.
+# exclude_patterns:
+#   - "**/.Thumbnails/**"
+#   - "**/.*"
+
+# Hashing performance tuning (optional).
+hashing:
+  max_workers: 4  # default: os.cpu_count() — increase on machines with fast NVMe or high core count
