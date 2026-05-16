@@ -1,7 +1,7 @@
 # PhotoConsole Project State
 
 **Project Started**: 2026-05-16  
-**Current Status**: 🟢 Planning Complete — Ready for Phase 1
+**Current Status**: 🟢 Phase 1 Planned — Ready to Execute
 
 ---
 
@@ -25,16 +25,16 @@
 
 ## Next Steps
 
-1. **Phase 1 Planning** → Run `/gsd:plan-phase 1` to create detailed Phase 1 plan (PLAN.md)
-2. **Architecture Design** → Review scanning, cataloging, and rclone integration patterns
+1. **Phase 1 Execution** → Run `/gsd:execute-phase 1` to implement all 5 plans
+2. **Architecture Design** → Review scanning, cataloging, and rclone integration patterns (now in PLAN.md files)
 3. **Implementation** → Begin scanning module development
 
 ---
 
 ## Open Questions
 
-- [ ] Should we support symbolic links in scanning? (defer to Phase 1 planning)
-- [ ] How should we handle corrupted or unreadable files during scanning? (defer to Phase 1 planning)
+- [x] Should we support symbolic links in scanning? → **No** — skip silently; log only with `--verbose` (D-04, D-05)
+- [x] How should we handle corrupted or unreadable files during scanning? → **Store with `status='error'`** and `error_type` field; retry on re-scan (D-01, D-02, D-03)
 - [ ] Should consolidation preserve original folder structure? (defer to Phase 2 planning)
 
 ---
@@ -74,7 +74,7 @@ All project files live under `PhotoConsole/` in the working directory:
 - ✅ config.json created (workflow preferences)
 - ✅ Project folder created at `PhotoConsole/`
 - ⏳ Git repository to be initialized in `PhotoConsole/`
-- ⏳ Phase 1 plan to be created (PLAN.md)
-- ⏳ Architecture review before implementation
+- ✅ Phase 1 plan created (5 PLAN.md files — 3 waves, committed 33a4be9)
+- ⏳ Phase 1 execution (run `/gsd:execute-phase 1`)
 
-**Ready to proceed with Phase 1 planning.**
+**Ready to execute Phase 1.**
