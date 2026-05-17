@@ -667,3 +667,317 @@ class TestRunConsolidation:
 
         assert len(plan.skipped) == 1
         assert len(plan.to_copy) == 0
+
+
+# ---------------------------------------------------------------------------
+# Plan 02-06 — standalone test functions (FR3, FR4, NFR1, NFR4)
+# ---------------------------------------------------------------------------
+# These functions use the exact names required by the plan 02-06 must_haves
+# and complement the class-based tests above with a flat, fixture-driven style.
+# ---------------------------------------------------------------------------
+
+
+def _make_cfg(tmp_path) -> "object":
+    """Return a Config with ConsolidationConfig for use in plan-02-06 tests.
+
+    Fixture helper as specified in the plan:
+        Config(sources=[], catalog_path=str(tmp_path/'catalog.db'),
+               consolidation=ConsolidationConfig(
+                   destination_path=str(tmp_path/'Lib'),
+                   source_priority=['D: SSD', 'OneDrive']))
+    """
+    from photoconsole.config import Config, ConsolidationConfig
+    return Config(
+        sources=[],
+        catalog_path=str(tmp_path / "catalog.db"),
+        consolidation=ConsolidationConfig(
+            destination_path=str(tmp_path / "Lib"),
+            source_priority=["D: SSD", "OneDrive"],
+        ),
+    )
+
+
+# --- compute_dest_path ---
+
+def test_compute_dest_path_with_date(tmp_path):
+    """EXIF colon format '2023:06:15 10:30:00' -> Lib/2023/06/IMG.jpg."""
+    from pathlib import Path
+    from photoconsole.consolidator import compute_dest_path
+
+    dest_root = str(tmp_path / "Lib")
+    result = compute_dest_path("IMG.jpg", "2023:06:15 10:30:00", None, dest_root)
+    assert result == Path(dest_root) / "2023" / "06" / "IMG.jpg"
+
+
+def test_compute_dest_path_iso_date(tmp_path):
+    """ISO-like format '2023-06-15 10:30:00' -> Lib/2023/06/IMG.jpg."""
+    from pathlib import Path
+    from photoconsole.consolidator import compute_dest_path
+
+    dest_root = str(tmp_path / "Lib")
+    result = compute_dest_path("IMG.jpg", "2023-06-15 10:30:00", None, dest_root)
+    assert result == Path(dest_root) / "2023" / "06" / "IMG.jpg"
+
+
+def test_compute_dest_path_mtime_fallback(tmp_path):
+    """date_taken=None with mtime -> unknown/YYYY/MM/VID.mp4 under tmp_path."""
+    from photoconsole.consolidator import compute_dest_path
+
+    mtime = 1686823800.0
+    result = compute_dest_path("VID.mp4", None, mtime, str(tmp_path))
+
+    # Result layout: tmp_path / 'unknown' / YYYY / MM / 'VID.mp4'
+    # parts[-4] == 'unknown', parts[-3] == YYYY, parts[-2] == MM, parts[-1] == 'VID.mp4'
+    assert result.parts[-4] == "unknown"
+    # Parent name (MM) is a 2-digit month string
+    assert result.parent.name.isdigit() and len(result.parent.name) == 2
+    assert result.name == "VID.mp4"
+
+
+def test_compute_dest_path_no_date_no_mtime(tmp_path):
+    """Both date_taken and mtime are None -> tmp_path/unknown/X.jpg."""
+    from photoconsole.consolidator import compute_dest_path
+
+    result = compute_dest_path("X.jpg", None, None, str(tmp_path))
+    assert result == tmp_path / "unknown" / "X.jpg"
+
+
+def test_compute_dest_path_unparseable_date_uses_mtime(tmp_path):
+    """Unparseable date_taken falls through to mtime -> result under tmp_path/unknown."""
+    from photoconsole.consolidator import compute_dest_path
+
+    mtime = 1686823800.0
+    result = compute_dest_path("X.jpg", "not-a-date", mtime, str(tmp_path))
+
+    # Falls to mtime path -> must be under 'unknown'
+    assert "unknown" in result.parts
+
+
+# --- resolve_conflict ---
+
+def test_conflict_nonexistent_returns_desired(tmp_path):
+    """Path does not exist -> resolve_conflict returns the desired path unchanged."""
+    from photoconsole.consolidator import resolve_conflict
+
+    desired = tmp_path / "2023" / "06" / "IMG.jpg"
+    result = resolve_conflict(desired, "any_hash_value")
+    assert result == desired
+
+
+def test_conflict_idempotent_same_hash(tmp_path):
+    """Existing file with same sha256 as src_hash -> resolve_conflict returns None."""
+    import hashlib
+    from photoconsole.consolidator import resolve_conflict
+
+    data = b"data"
+    target = tmp_path / "x.jpg"
+    target.write_bytes(data)
+    src_hash = hashlib.sha256(data).hexdigest()
+
+    result = resolve_conflict(target, src_hash)
+    assert result is None
+
+
+def test_conflict_rename_different_hash(tmp_path):
+    """Existing file with different hash -> resolve_conflict returns tmp_path/x_2.jpg."""
+    from photoconsole.consolidator import resolve_conflict
+
+    target = tmp_path / "x.jpg"
+    target.write_bytes(b"data")
+
+    result = resolve_conflict(target, "different_hash")
+    assert result == tmp_path / "x_2.jpg"
+
+
+def test_conflict_rename_checks_candidate_hash(tmp_path):
+    """x.jpg and x_2.jpg both exist; src_hash matches x_2.jpg content -> returns None."""
+    import hashlib
+    from photoconsole.consolidator import resolve_conflict
+
+    data = b"data"
+    (tmp_path / "x.jpg").write_bytes(data)
+    (tmp_path / "x_2.jpg").write_bytes(data)
+    src_hash = hashlib.sha256(data).hexdigest()
+
+    # src_hash matches x_2.jpg -> idempotent skip at conflict slot
+    result = resolve_conflict(tmp_path / "x.jpg", src_hash)
+    assert result is None
+
+
+# --- copy_and_verify ---
+
+def test_copy_and_verify_success(tmp_path):
+    """copy_and_verify copies content and returns True when hash matches."""
+    import hashlib
+    from photoconsole.consolidator import copy_and_verify
+
+    src = tmp_path / "src.jpg"
+    src.write_bytes(b"content")
+    expected_hash = hashlib.sha256(b"content").hexdigest()
+    dest = tmp_path / "dest" / "out.jpg"
+
+    result = copy_and_verify(str(src), dest, expected_hash)
+
+    assert result is True
+    assert dest.exists()
+
+
+def test_copy_and_verify_hash_mismatch(tmp_path):
+    """copy_and_verify returns False and removes dest on hash mismatch (D-10 / NFR1)."""
+    from photoconsole.consolidator import copy_and_verify
+
+    src = tmp_path / "src.jpg"
+    src.write_bytes(b"content")
+    dest = tmp_path / "dest" / "out.jpg"
+
+    result = copy_and_verify(str(src), dest, "wrong_hash_value")
+
+    assert result is False
+    assert not dest.exists()  # corrupt copy removed per T-03-02
+
+
+def test_copy_and_verify_missing_source(tmp_path):
+    """copy_and_verify returns False (not raises) when source does not exist."""
+    from photoconsole.consolidator import copy_and_verify
+
+    nonexistent_src = str(tmp_path / "does_not_exist.jpg")
+    dest = tmp_path / "dest.jpg"
+
+    result = copy_and_verify(nonexistent_src, dest, "any_hash")
+    assert result is False
+
+
+# --- write_manifest ---
+
+def test_write_manifest_csv_columns(tmp_path):
+    """CSV must contain exactly the four D-11 columns (D-11 compliance)."""
+    import csv as _csv
+    from photoconsole.consolidator import write_manifest
+
+    row = {
+        "original_path": r"C:\photos\a.jpg",
+        "hash": "aabbcc",
+        "destination_path": r"D:\Lib\2023\06\a.jpg",
+        "source_name": "OneDrive",
+        "source_type": "rclone",
+    }
+    csv_path, _ = write_manifest([row], tmp_path)
+
+    with open(csv_path, newline="", encoding="utf-8") as fh:
+        reader = _csv.DictReader(fh)
+        fieldnames = reader.fieldnames
+
+    assert fieldnames == ["original_path", "hash", "destination_path", "source_name"]
+
+
+def test_write_manifest_bat_local_del(tmp_path):
+    """local source_type -> 'del /f \"<path>\"' line in .bat."""
+    from photoconsole.consolidator import write_manifest
+
+    path = r"D:\photos\photo.jpg"
+    row = {
+        "original_path": path,
+        "hash": "deadbeef",
+        "destination_path": r"D:\Lib\2023\06\photo.jpg",
+        "source_name": "D: SSD",
+        "source_type": "local",
+    }
+    _, bat_path = write_manifest([row], tmp_path)
+    bat_text = bat_path.read_text(encoding="utf-8-sig")
+
+    assert 'del /f "' in bat_text
+    assert path in bat_text
+
+
+def test_write_manifest_bat_rclone_comment(tmp_path):
+    """rclone source_type -> ':: rclone deletefile' comment, no 'del /f'."""
+    from photoconsole.consolidator import write_manifest
+
+    row = {
+        "original_path": "onedrive:Photos/a.jpg",
+        "hash": "cafebabe",
+        "destination_path": r"D:\Lib\2023\06\a.jpg",
+        "source_name": "OneDrive",
+        "source_type": "rclone",
+    }
+    _, bat_path = write_manifest([row], tmp_path)
+    bat_text = bat_path.read_text(encoding="utf-8-sig")
+
+    assert ":: rclone deletefile" in bat_text
+    assert "del /f" not in bat_text
+
+
+def test_write_manifest_bat_encoding(tmp_path):
+    """The .bat file must be readable as utf-8-sig; first content line is '@echo off'."""
+    from photoconsole.consolidator import write_manifest
+
+    _, bat_path = write_manifest([], tmp_path)
+    text = bat_path.read_text(encoding="utf-8-sig")
+
+    first_line = text.splitlines()[0].strip()
+    assert first_line == "@echo off"
+
+
+# --- run_consolidation ---
+
+def test_dry_run_no_io(tmp_path):
+    """dry_run=True populates plan.to_copy but writes zero files to dest_root."""
+    import hashlib
+    from photoconsole.consolidator import run_consolidation
+    from photoconsole.dedup import DuplicateGroup
+    from photoconsole.catalog.models import MediaFile
+
+    cfg = _make_cfg(tmp_path)
+    dest_root = tmp_path / "Lib"
+
+    src = tmp_path / "cloud.jpg"
+    src.write_bytes(b"cloud photo bytes")
+    h = hashlib.sha256(b"cloud photo bytes").hexdigest()
+
+    f = MediaFile()
+    f.path = str(src)
+    f.hash = h
+    f.source_name = "OneDrive"
+    f.source_type = "rclone"
+    f.date_taken = "2023:06:15 10:30:00"
+    f.mtime = None
+
+    group = DuplicateGroup(hash=h, canonical=f, redundants=[], needs_copy=True)
+    plan = run_consolidation([group], cfg, dry_run=True)
+
+    assert len(plan.to_copy) == 1
+    # Dry run: dest_root must contain no files
+    if dest_root.exists():
+        media_files = [p for p in dest_root.rglob("*") if p.is_file()]
+        assert media_files == [], f"dry_run wrote files: {media_files}"
+
+
+def test_run_consolidation_live(tmp_path):
+    """dry_run=False copies the file; dest contains the correct content."""
+    import hashlib
+    from photoconsole.consolidator import run_consolidation
+    from photoconsole.dedup import DuplicateGroup
+    from photoconsole.catalog.models import MediaFile
+
+    cfg = _make_cfg(tmp_path)
+
+    src = tmp_path / "cloud.jpg"
+    src.write_bytes(b"cloud photo bytes")
+    h = hashlib.sha256(b"cloud photo bytes").hexdigest()
+
+    f = MediaFile()
+    f.path = str(src)
+    f.hash = h
+    f.source_name = "OneDrive"
+    f.source_type = "rclone"
+    f.date_taken = "2023:06:15 10:30:00"
+    f.mtime = None
+
+    group = DuplicateGroup(hash=h, canonical=f, redundants=[], needs_copy=True)
+    plan = run_consolidation([group], cfg, dry_run=False)
+
+    assert len(plan.to_copy) == 1
+    dest_root = tmp_path / "Lib"
+    expected_dest = dest_root / "2023" / "06" / "cloud.jpg"
+    assert expected_dest.exists()
+    assert expected_dest.read_bytes() == b"cloud photo bytes"
