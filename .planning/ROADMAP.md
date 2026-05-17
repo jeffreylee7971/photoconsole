@@ -116,13 +116,28 @@ Plans:
 **Plans**: 7 plans across 5 waves
 
 Plans:
+
+**Wave 1** (foundation)
 - [ ] 03-01-PLAN.md — pyproject.toml deps + pytest markers + conftest fixture helpers (Wave 1)
+
+**Wave 2** *(blocked on Wave 1 completion)*
 - [ ] 03-02-PLAN.md — MediaFile 9 new columns + _ensure_phase3_columns migration + test_catalog_phase3.py (Wave 2)
 - [ ] 03-03-PLAN.md — ClusterConfig + QualityWeightsConfig (Pydantic v2) + load_config extension + test_config_phase3.py (Wave 2)
+
+**Wave 3** *(blocked on Wave 2 completion)*
 - [ ] 03-04-PLAN.md — quality.py (blur, faces, dimensions, normalization, EXIF bonus) + test_quality.py (Wave 3)
 - [ ] 03-05-PLAN.md — clustering.py (CLIP, pHash, DBSCAN dense+sparse, ClusterGroup, write_cluster_manifest) + test_clustering.py (Wave 3)
+
+**Wave 4** *(blocked on Wave 3 completion)*
 - [ ] 03-06-PLAN.md — cli.py cluster + review-clusters commands + test_cli_phase3.py integration (Wave 4)
+
+**Wave 5** *(blocked on Wave 4 completion)*
 - [ ] 03-07-PLAN.md — test_eval_clustering.py critical eval dimensions (cluster purity, burst recall, keeper accuracy, EXIF ranking, size distribution, throughput) (Wave 5)
+
+Cross-cutting constraints:
+- Worker threads return result dicts only; main thread owns all session.commit() calls (T-02-02)
+- CLIP model loaded once before batch loop — never per-batch or per-file
+- All quality scores and embeddings are incremental (skip files with existing non-NULL values)
 
 ---
 

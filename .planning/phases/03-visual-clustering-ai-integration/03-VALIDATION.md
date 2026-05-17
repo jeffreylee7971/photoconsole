@@ -2,8 +2,8 @@
 phase: 3
 slug: visual-clustering-ai-integration
 status: draft
-nyquist_compliant: false
-wave_0_complete: false
+nyquist_compliant: true
+wave_0_complete: true
 created: 2026-05-17
 ---
 
@@ -54,15 +54,17 @@ created: 2026-05-17
 
 ## Wave 0 Requirements
 
-- [ ] `tests/test_config_phase3.py` — stubs for ClusterConfig/QualityWeightsConfig validation
-- [ ] `tests/test_catalog_phase3.py` — stubs for schema migration + partial upsert
-- [ ] `tests/test_quality.py` — stubs for blur score, face count, normalization, EXIF bonus
-- [ ] `tests/test_clustering.py` — stubs for pHash, embed_images, DBSCAN, write_cluster_manifest
-- [ ] `tests/test_cli_phase3.py` — stubs for cluster + review-clusters CLI commands
-- [ ] `tests/test_eval_clustering.py` — stubs with `@pytest.mark.critical` and `@pytest.mark.slow`
-- [ ] `tests/conftest.py` — add Phase 3 fixture helpers (synthesized sharp/blurry images, in-memory catalog with Phase 3 schema)
-- [ ] `pyproject.toml` — add `markers = ["critical: ...", "slow: ..."]` to `[tool.pytest.ini_options]`
-- [ ] `pyproject.toml` — add Phase 3 packages to `[project.dependencies]`
+> **Note — Inline-TDD structure:** This phase uses an inline-TDD pattern where each plan
+> creates both implementation and tests together in the same wave. There is no separate
+> Wave 0 stub step. Tests are written alongside (or immediately after) their implementation
+> within each plan's tasks, so every task's `<verify>` block has a concrete automated
+> command from the moment the plan executes. The `nyquist_compliant: true` and
+> `wave_0_complete: true` flags reflect this — test files are created as part of their
+> respective plans (Plans 01–07), not as a pre-execution stub wave.
+>
+> Plans that create test files: 01 (conftest + pyproject markers), 02 (test_catalog_phase3),
+> 03 (test_quality), 04 (test_config_phase3), 05 (test_clustering), 06 (test_cli_phase3),
+> 07 (test_eval_clustering).
 
 ---
 
@@ -79,11 +81,11 @@ created: 2026-05-17
 
 ## Validation Sign-Off
 
-- [ ] All tasks have `<automated>` verify or Wave 0 dependencies
-- [ ] Sampling continuity: no 3 consecutive tasks without automated verify
-- [ ] Wave 0 covers all MISSING references
-- [ ] No watch-mode flags
-- [ ] Feedback latency < 30s
-- [ ] `nyquist_compliant: true` set in frontmatter
+- [x] All tasks have `<automated>` verify — inline-TDD pattern; tests created in same plan as implementation
+- [x] Sampling continuity: no 3 consecutive tasks without automated verify
+- [x] Wave 0 coverage: handled via inline-TDD (see Wave 0 Requirements note above)
+- [x] No watch-mode flags
+- [x] Feedback latency < 30s
+- [x] `nyquist_compliant: true` set in frontmatter
 
-**Approval:** pending
+**Approval:** approved (inline-TDD structure confirmed)

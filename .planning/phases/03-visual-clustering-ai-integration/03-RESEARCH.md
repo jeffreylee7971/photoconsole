@@ -942,22 +942,25 @@ Use `.is_(None)` and `.isnot(None)` for nullable column checks in SQLAlchemy 2.0
 
 ---
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-1. **Where should write_cluster_manifest() live?**
+1. **Where should write_cluster_manifest() live?** — RESOLVED
    - What we know: Phase 2's write_manifest() is in consolidator.py; Phase 3 needs a similar but distinct function
    - What's unclear: should write_cluster_manifest() go in clustering.py (co-located with the data) or consolidator.py (consolidates all manifest logic)?
    - Recommendation: put it in `clustering.py` to keep consolidator.py focused on Phase 2 copy operations. The BAT format logic can be a thin shared helper or duplicated (30 lines).
+   - **Resolution:** write_cluster_manifest() lives in clustering.py — decided and implemented by Plan 05.
 
-2. **Should `photoconsole cluster` be skippable per-source-type?**
+2. **Should `photoconsole cluster` be skippable per-source-type?** — RESOLVED
    - What we know: rclone sources may have paths that are not locally accessible at cluster time (NAS over SMB, cloud mounts)
    - What's unclear: should cluster skip rclone-sourced files if the path is inaccessible?
    - Recommendation: add a preflight check -- if a file's path cannot be opened by PIL/cv2, log a warning and assign zero-vector embedding (existing corrupt-image gate from AI-SPEC Section 6).
+   - **Resolution:** Preflight check / zero-vector gate adopted in Plan 06 Task 1 Step 6. Files whose embedding L2 norm < 0.01 are excluded from clustering input.
 
-3. **Ground truth dataset: when to build?**
+3. **Ground truth dataset: when to build?** — RESOLVED
    - What we know: AI-SPEC requires 25-30 labeled photo sets for eval dimensions; user must manually label ground_truth.json
    - What's unclear: this requires the user to supply real family photos for the eval dataset
    - Recommendation: synthesize burst groups and sharp/blurry pairs programmatically for unit tests; defer real-photo ground truth labeling to a user review task in Wave 2 planning.
+   - **Resolution:** Synthetic fixtures only for unit tests (Plan 07). User-labeled ground truth is deferred — documented as a manual user task to be completed before running eval dimensions against a real catalog.
 
 ---
 
