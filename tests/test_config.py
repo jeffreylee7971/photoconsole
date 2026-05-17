@@ -364,51 +364,99 @@ class TestConsolidationConfigDataclass:
 # ---------------------------------------------------------------------------
 
 class TestLoadConfigConsolidation:
-    def _minimal_yaml(self, extra: str = '') -> str:
-        return textwrap.dedent(f"""
+    def _write_config(self, tmp_path, content: str):
+        """Write a YAML config string to a temp file and return its path."""
+        return write_yaml(tmp_path, content)
+
+    def test_load_config_no_consolidation_section_gives_empty_defaults(self, tmp_path):
+        yaml_text = """
             catalog_path: ~/.photoconsole/catalog.db
             sources:
               - name: "Local"
                 type: local
                 path: /tmp/photos
-            {extra}
-        """)
-
-    def test_load_config_no_consolidation_section_gives_empty_defaults(self, tmp_path):
-        path = write_yaml(tmp_path, self._minimal_yaml())
+        """
+        path = self._write_config(tmp_path, yaml_text)
         cfg = load_config(path)
         assert cfg.consolidation.destination_path == ''
         assert cfg.consolidation.source_priority == []
 
     def test_load_config_consolidation_destination_path_normalized(self, tmp_path):
-        extra = "consolidation:\n  destination_path: ~/PhotoLibrary"
-        path = write_yaml(tmp_path, self._minimal_yaml(extra))
+        yaml_text = """
+            catalog_path: ~/.photoconsole/catalog.db
+            sources:
+              - name: "Local"
+                type: local
+                path: /tmp/photos
+            consolidation:
+              destination_path: ~/PhotoLibrary
+        """
+        path = self._write_config(tmp_path, yaml_text)
         cfg = load_config(path)
         # Must be absolute (no tilde)
         assert os.path.isabs(cfg.consolidation.destination_path)
         assert '~' not in cfg.consolidation.destination_path
 
     def test_load_config_consolidation_destination_path_empty_stays_empty(self, tmp_path):
-        extra = "consolidation:\n  source_priority:\n    - X"
-        path = write_yaml(tmp_path, self._minimal_yaml(extra))
+        yaml_text = """
+            catalog_path: ~/.photoconsole/catalog.db
+            sources:
+              - name: "Local"
+                type: local
+                path: /tmp/photos
+            consolidation:
+              source_priority:
+                - X
+        """
+        path = self._write_config(tmp_path, yaml_text)
         cfg = load_config(path)
         assert cfg.consolidation.destination_path == ''
 
     def test_load_config_consolidation_source_priority_list(self, tmp_path):
-        extra = "consolidation:\n  source_priority:\n    - D: SSD\n    - OneDrive"
-        path = write_yaml(tmp_path, self._minimal_yaml(extra))
+        yaml_text = """
+            catalog_path: ~/.photoconsole/catalog.db
+            sources:
+              - name: "Local"
+                type: local
+                path: /tmp/photos
+            consolidation:
+              source_priority:
+                - "D: SSD"
+                - OneDrive
+        """
+        path = self._write_config(tmp_path, yaml_text)
         cfg = load_config(path)
         assert cfg.consolidation.source_priority == ['D: SSD', 'OneDrive']
 
     def test_load_config_consolidation_source_priority_is_list_type(self, tmp_path):
-        extra = "consolidation:\n  source_priority:\n    - A"
-        path = write_yaml(tmp_path, self._minimal_yaml(extra))
+        yaml_text = """
+            catalog_path: ~/.photoconsole/catalog.db
+            sources:
+              - name: "Local"
+                type: local
+                path: /tmp/photos
+            consolidation:
+              source_priority:
+                - A
+        """
+        path = self._write_config(tmp_path, yaml_text)
         cfg = load_config(path)
         assert isinstance(cfg.consolidation.source_priority, list)
 
     def test_load_config_consolidation_both_fields(self, tmp_path):
-        extra = "consolidation:\n  destination_path: /tmp/lib\n  source_priority:\n    - X\n    - Y"
-        path = write_yaml(tmp_path, self._minimal_yaml(extra))
+        yaml_text = """
+            catalog_path: ~/.photoconsole/catalog.db
+            sources:
+              - name: "Local"
+                type: local
+                path: /tmp/photos
+            consolidation:
+              destination_path: /tmp/lib
+              source_priority:
+                - X
+                - Y
+        """
+        path = self._write_config(tmp_path, yaml_text)
         cfg = load_config(path)
         assert os.path.isabs(cfg.consolidation.destination_path)
         assert cfg.consolidation.source_priority == ['X', 'Y']

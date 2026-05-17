@@ -6,10 +6,13 @@ The config file is the single source of truth for:
   - include_extensions: file extension allow-list (global, applied to all sources)
   - exclude_patterns: glob patterns to skip (e.g. thumbs, cache dirs)
   - hashing.max_workers: thread pool size for parallel hashing
+  - consolidation.destination_path: target directory for consolidated library
+  - consolidation.source_priority: ordered list of source names for tie-breaking
 
-Security notes (T-01-01, T-01-02):
+Security notes (T-01-01, T-01-02, T-02-01):
   - yaml.safe_load is used exclusively; !!python/object tags are rejected.
   - catalog_path is ~-expanded and converted to an absolute path.
+  - consolidation.destination_path is ~-expanded and converted to an absolute path.
 """
 from __future__ import annotations
 
@@ -42,6 +45,21 @@ class Source:
 
 
 @dataclass
+class ConsolidationConfig:
+    """Configuration for the consolidation phase (D-17).
+
+    Attributes:
+        destination_path: Absolute path to the target directory where consolidated
+                          files will be written. Empty string means not configured.
+        source_priority:  Ordered list of source names used for tie-breaking when
+                          the same file exists in multiple sources; earlier entries
+                          are preferred.
+    """
+    destination_path: str = ''
+    source_priority: list[str] = field(default_factory=list)
+
+
+@dataclass
 class Config:
     """Top-level configuration object returned by load_config().
 
@@ -51,6 +69,7 @@ class Config:
         include_extensions:  frozenset of lower-case extensions (each starting with '.').
         exclude_patterns:    Glob patterns to skip during traversal.
         hashing_max_workers: Thread pool size for parallel hashing; defaults to os.cpu_count().
+        consolidation:       Consolidation phase settings (destination, source priority).
     """
     sources: list[Source]
     catalog_path: str
@@ -61,6 +80,7 @@ class Config:
     hashing_max_workers: int = field(
         default_factory=lambda: os.cpu_count() or 1
     )
+    consolidation: ConsolidationConfig = field(default_factory=ConsolidationConfig)
 
 
 def _normalize_extension(ext: str) -> str:
@@ -170,10 +190,25 @@ def load_config(path: Union[str, os.PathLike]) -> Config:
     else:
         hashing_max_workers = os.cpu_count() or 1
 
+    # --- Optional: consolidation section (D-17, T-02-01) ---
+    consolidation_section = raw.get('consolidation', {}) or {}
+    destination_path_raw = consolidation_section.get('destination_path', '')
+    # Only normalize when non-empty — abspath('') resolves to cwd which is wrong.
+    if destination_path_raw:
+        destination_path = os.path.abspath(os.path.expanduser(str(destination_path_raw)))
+    else:
+        destination_path = ''
+    source_priority: list[str] = list(consolidation_section.get('source_priority', []))
+    consolidation = ConsolidationConfig(
+        destination_path=destination_path,
+        source_priority=source_priority,
+    )
+
     return Config(
         sources=sources,
         catalog_path=catalog_path,
         include_extensions=include_extensions,
         exclude_patterns=exclude_patterns,
         hashing_max_workers=hashing_max_workers,
+        consolidation=consolidation,
     )
