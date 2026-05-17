@@ -42,7 +42,7 @@ progress:
 
 ## Next Steps
 
-Phase 2 UAT complete (8/8 passed). Proceed to Phase 3: Visual Clustering & AI (`/gsd:discuss-phase 3` or `/gsd:plan-phase 3`).
+Phase 3 context gathered. Proceed to planning: `/gsd:plan-phase 3`.
 
 ## Phase 2 Progress
 
