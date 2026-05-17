@@ -3,7 +3,7 @@ import os
 import textwrap
 
 import pytest
-from photoconsole.config import Config, Source, load_config
+from photoconsole.config import Config, ConsolidationConfig, Source, load_config
 from photoconsole.constants import MEDIA_EXTENSIONS
 
 
@@ -300,3 +300,115 @@ class TestYamlSafety:
         import yaml
         with pytest.raises((yaml.YAMLError, ValueError, Exception)):
             load_config(path)
+
+
+# ---------------------------------------------------------------------------
+# 9. ConsolidationConfig dataclass (Task 1 — RED phase)
+# ---------------------------------------------------------------------------
+
+class TestConsolidationConfigDataclass:
+    def test_consolidation_config_default_destination_path_is_empty_string(self):
+        c = ConsolidationConfig()
+        assert c.destination_path == ''
+
+    def test_consolidation_config_default_source_priority_is_empty_list(self):
+        c = ConsolidationConfig()
+        assert c.source_priority == []
+
+    def test_consolidation_config_with_destination_path(self):
+        c = ConsolidationConfig(destination_path='D:\\PhotoLibrary')
+        assert c.destination_path == 'D:\\PhotoLibrary'
+
+    def test_consolidation_config_with_source_priority(self):
+        c = ConsolidationConfig(source_priority=['D: SSD', 'OneDrive'])
+        assert c.source_priority == ['D: SSD', 'OneDrive']
+
+    def test_consolidation_config_full_construction(self):
+        c = ConsolidationConfig(destination_path='D:\\test', source_priority=['A', 'B'])
+        assert c.destination_path == 'D:\\test'
+        assert c.source_priority == ['A', 'B']
+
+    def test_config_has_consolidation_field_with_default(self):
+        cfg = Config(sources=[], catalog_path='/tmp/x.db')
+        assert hasattr(cfg, 'consolidation')
+        assert isinstance(cfg.consolidation, ConsolidationConfig)
+
+    def test_config_consolidation_default_destination_path_is_empty(self):
+        cfg = Config(sources=[], catalog_path='/tmp/x.db')
+        assert cfg.consolidation.destination_path == ''
+
+    def test_config_consolidation_default_source_priority_is_empty_list(self):
+        cfg = Config(sources=[], catalog_path='/tmp/x.db')
+        assert cfg.consolidation.source_priority == []
+
+    def test_config_consolidation_accepts_kwarg(self):
+        consolidation = ConsolidationConfig(destination_path='D:\\lib', source_priority=['X'])
+        cfg = Config(sources=[], catalog_path='/tmp/x.db', consolidation=consolidation)
+        assert cfg.consolidation.destination_path == 'D:\\lib'
+        assert cfg.consolidation.source_priority == ['X']
+
+    def test_existing_config_construction_without_consolidation_kwarg_still_works(self):
+        """Regression: existing code that does not pass consolidation= must still work."""
+        cfg = Config(
+            sources=[],
+            catalog_path='/tmp/x.db',
+            include_extensions=frozenset({'.jpg'}),
+            exclude_patterns=['*.tmp'],
+            hashing_max_workers=4,
+        )
+        assert cfg.consolidation.destination_path == ''
+
+
+# ---------------------------------------------------------------------------
+# 10. load_config() consolidation YAML parsing (Task 2 — RED phase)
+# ---------------------------------------------------------------------------
+
+class TestLoadConfigConsolidation:
+    def _minimal_yaml(self, extra: str = '') -> str:
+        return textwrap.dedent(f"""
+            catalog_path: ~/.photoconsole/catalog.db
+            sources:
+              - name: "Local"
+                type: local
+                path: /tmp/photos
+            {extra}
+        """)
+
+    def test_load_config_no_consolidation_section_gives_empty_defaults(self, tmp_path):
+        path = write_yaml(tmp_path, self._minimal_yaml())
+        cfg = load_config(path)
+        assert cfg.consolidation.destination_path == ''
+        assert cfg.consolidation.source_priority == []
+
+    def test_load_config_consolidation_destination_path_normalized(self, tmp_path):
+        extra = "consolidation:\n  destination_path: ~/PhotoLibrary"
+        path = write_yaml(tmp_path, self._minimal_yaml(extra))
+        cfg = load_config(path)
+        # Must be absolute (no tilde)
+        assert os.path.isabs(cfg.consolidation.destination_path)
+        assert '~' not in cfg.consolidation.destination_path
+
+    def test_load_config_consolidation_destination_path_empty_stays_empty(self, tmp_path):
+        extra = "consolidation:\n  source_priority:\n    - X"
+        path = write_yaml(tmp_path, self._minimal_yaml(extra))
+        cfg = load_config(path)
+        assert cfg.consolidation.destination_path == ''
+
+    def test_load_config_consolidation_source_priority_list(self, tmp_path):
+        extra = "consolidation:\n  source_priority:\n    - D: SSD\n    - OneDrive"
+        path = write_yaml(tmp_path, self._minimal_yaml(extra))
+        cfg = load_config(path)
+        assert cfg.consolidation.source_priority == ['D: SSD', 'OneDrive']
+
+    def test_load_config_consolidation_source_priority_is_list_type(self, tmp_path):
+        extra = "consolidation:\n  source_priority:\n    - A"
+        path = write_yaml(tmp_path, self._minimal_yaml(extra))
+        cfg = load_config(path)
+        assert isinstance(cfg.consolidation.source_priority, list)
+
+    def test_load_config_consolidation_both_fields(self, tmp_path):
+        extra = "consolidation:\n  destination_path: /tmp/lib\n  source_priority:\n    - X\n    - Y"
+        path = write_yaml(tmp_path, self._minimal_yaml(extra))
+        cfg = load_config(path)
+        assert os.path.isabs(cfg.consolidation.destination_path)
+        assert cfg.consolidation.source_priority == ['X', 'Y']
