@@ -22,10 +22,20 @@ Pitfall 6 (RESEARCH.md): rclone candidates have remote-prefixed paths (e.g.
 always receives mtime=None for rclone candidates, which means should_skip
 returns False and they are always re-processed in Phase 1. A streaming mtime
 approach for rclone is deferred to a later phase.
+
+Phase 2 additions (Plan 02-05):
+- D-14: report command outputs a rich.table.Table (text), CSV, or JSON list of
+  duplicate groups found in the catalog.
+- D-16: plan-consolidation always runs dry_run=True; writes no files.
+- FR4/FR5: consolidate command prompts for confirmation before live run; dry-run
+  flag available for safe preview.
 """
 from __future__ import annotations
 
+import csv
+import json
 import logging
+import sys
 import threading
 import time
 from pathlib import Path
@@ -40,6 +50,8 @@ from photoconsole.catalog import (
 )
 from photoconsole.config import load_config
 from photoconsole.constants import VIDEO_EXTENSIONS
+from photoconsole.dedup import find_duplicate_groups
+from photoconsole.consolidator import run_consolidation, ConsolidationPlan, CopyAction
 from photoconsole.hasher import process_files
 from photoconsole.metadata.video import check_ffprobe_available
 from photoconsole.scanner import check_rclone_available, scan_all
@@ -302,4 +314,265 @@ def _print_summary(summary: dict) -> None:
         f"  Cataloged        : {summary['cataloged']}\n"
         f"  Skipped          : {summary['skipped']}\n"
         f"  Errored          : {summary['errored']}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# report subcommand
+# ---------------------------------------------------------------------------
+
+
+def _run_report(
+    config_path: str,
+    output_format: str = "text",
+    verbose: bool = False,
+    quiet: bool = False,
+):
+    """Query catalog for duplicate groups and return them.
+
+    Pure helper — no click API calls. Directly testable without CliRunner.
+
+    Args:
+        config_path:   Path to the YAML config file.
+        output_format: One of 'text', 'csv', 'json' (unused here; passed for
+                       symmetry with other _run_* helpers).
+        verbose:       Reserved for future per-group debug output.
+        quiet:         Reserved for future suppression behaviour.
+
+    Returns:
+        list[DuplicateGroup] — one entry per hash that appears more than once
+        in the catalog with status='ok'.
+    """
+    cfg = load_config(config_path)
+    engine = create_catalog_engine(cfg.catalog_path)
+    SessionLocal = session_factory(engine)
+    with SessionLocal() as session:
+        groups = find_duplicate_groups(
+            session, cfg.consolidation.source_priority
+        )
+    return groups
+
+
+def _print_report(groups, output_format: str, quiet: bool) -> None:
+    """Render duplicate groups in the requested format to stdout.
+
+    Args:
+        groups:        list[DuplicateGroup] from _run_report.
+        output_format: 'text' | 'csv' | 'json'
+        quiet:         When True this function should not be called (the caller
+                       guards it), but we accept it here for interface symmetry.
+    """
+    if output_format == "text":
+        from rich.console import Console
+        from rich.table import Table
+
+        table = Table(title="Duplicate Groups")
+        table.add_column("Hash", style="cyan", no_wrap=True)
+        table.add_column("Count", justify="right")
+        table.add_column("Total Size", justify="right")
+        table.add_column("Sources")
+        table.add_column("Date Range")
+
+        for group in groups:
+            all_files = [group.canonical] + group.redundants
+            total_size = sum(f.size or 0 for f in all_files)
+            sources = ", ".join(
+                sorted({f.source_name for f in all_files if f.source_name})
+            )
+            dates = [f.date_taken for f in all_files if f.date_taken]
+            date_range = f"{min(dates)} .. {max(dates)}" if dates else "unknown"
+            table.add_row(
+                (group.hash or "")[:12],
+                str(len(all_files)),
+                f"{total_size / 1_048_576:.1f} MB",
+                sources,
+                date_range,
+            )
+
+        Console().print(table)
+
+    elif output_format == "csv":
+        writer = csv.writer(sys.stdout)
+        writer.writerow(["hash", "count", "total_size", "sources", "date_range"])
+        for group in groups:
+            all_files = [group.canonical] + group.redundants
+            total_size = sum(f.size or 0 for f in all_files)
+            sources = ", ".join(
+                sorted({f.source_name for f in all_files if f.source_name})
+            )
+            dates = [f.date_taken for f in all_files if f.date_taken]
+            date_range = f"{min(dates)} .. {max(dates)}" if dates else "unknown"
+            writer.writerow(
+                [
+                    (group.hash or "")[:12],
+                    len(all_files),
+                    total_size,
+                    sources,
+                    date_range,
+                ]
+            )
+
+    elif output_format == "json":
+        rows = []
+        for group in groups:
+            all_files = [group.canonical] + group.redundants
+            total_size = sum(f.size or 0 for f in all_files)
+            sources = ", ".join(
+                sorted({f.source_name for f in all_files if f.source_name})
+            )
+            dates = [f.date_taken for f in all_files if f.date_taken]
+            date_range = f"{min(dates)} .. {max(dates)}" if dates else "unknown"
+            rows.append(
+                {
+                    "hash": (group.hash or "")[:12],
+                    "count": len(all_files),
+                    "total_size_bytes": total_size,
+                    "sources": sources,
+                    "date_range": date_range,
+                }
+            )
+        print(json.dumps(rows, indent=2))
+
+
+@main.command()
+@click.option(
+    "--config", "config_path",
+    required=True,
+    type=click.Path(exists=True, dir_okay=False, readable=True),
+    help="Path to the YAML configuration file.",
+)
+@click.option(
+    "--output-format",
+    default="text",
+    type=click.Choice(["text", "csv", "json"]),
+    show_default=True,
+    help="Output format for the report.",
+)
+@click.pass_context
+def report(ctx: click.Context, config_path: str, output_format: str) -> None:
+    """Report duplicate media groups found in the catalog.
+
+    Queries the catalog for files sharing the same SHA-256 hash and displays
+    a summary table (text), CSV rows, or a JSON array.
+    """
+    verbose: bool = ctx.obj["verbose"]
+    quiet: bool = ctx.obj["quiet"]
+
+    groups = _run_report(config_path, output_format, verbose, quiet)
+
+    if not quiet:
+        _print_report(groups, output_format, quiet)
+
+
+# ---------------------------------------------------------------------------
+# plan-consolidation and consolidate subcommands
+# ---------------------------------------------------------------------------
+
+
+def _run_consolidate(
+    config_path: str,
+    dry_run: bool = True,
+    verbose: bool = False,
+) -> ConsolidationPlan:
+    """Run the consolidation pipeline and return the plan.
+
+    Pure helper — no click API calls. Directly testable without CliRunner.
+
+    Args:
+        config_path: Path to the YAML config file.
+        dry_run:     When True, no files are written (D-16).
+        verbose:     Reserved for per-file progress output in future.
+
+    Returns:
+        ConsolidationPlan with to_copy, to_manifest, skipped, and errors.
+    """
+    cfg = load_config(config_path)
+    engine = create_catalog_engine(cfg.catalog_path)
+    SessionLocal = session_factory(engine)
+    with SessionLocal() as session:
+        groups = find_duplicate_groups(
+            session, cfg.consolidation.source_priority
+        )
+    plan = run_consolidation(groups, cfg, dry_run=dry_run)
+    return plan
+
+
+def _print_plan(plan: ConsolidationPlan, verbose: bool = False) -> None:
+    """Print a human-readable summary of the consolidation plan.
+
+    Args:
+        plan:    ConsolidationPlan returned by _run_consolidate.
+        verbose: When True, print each CopyAction src → dest.
+    """
+    click.echo("Consolidation plan:")
+    click.echo(f"  Files to copy  : {len(plan.to_copy)}")
+    click.echo(f"  Already present: {len(plan.skipped)}")
+    click.echo(f"  Manifest entries: {len(plan.to_manifest)}")
+    click.echo(f"  Errors         : {len(plan.errors)}")
+
+    if verbose and plan.to_copy:
+        for action in plan.to_copy:
+            click.echo(f"    {action.src_path} -> {action.dest_path}")
+
+
+@main.command(name="plan-consolidation")
+@click.option(
+    "--config", "config_path",
+    required=True,
+    type=click.Path(exists=True, dir_okay=False, readable=True),
+    help="Path to the YAML configuration file.",
+)
+@click.pass_context
+def plan_consolidation(ctx: click.Context, config_path: str) -> None:
+    """Preview the consolidation plan without writing any files.
+
+    Always runs in dry-run mode (D-16). Use `consolidate` to execute the plan.
+    """
+    verbose: bool = ctx.obj["verbose"]
+
+    plan = _run_consolidate(config_path, dry_run=True, verbose=verbose)
+    _print_plan(plan, verbose=verbose)
+    click.echo("Dry run complete — no files written.")
+
+
+@main.command()
+@click.option(
+    "--config", "config_path",
+    required=True,
+    type=click.Path(exists=True, dir_okay=False, readable=True),
+    help="Path to the YAML configuration file.",
+)
+@click.option(
+    "--dry-run",
+    is_flag=True,
+    default=False,
+    help="Preview the consolidation plan without writing any files.",
+)
+@click.pass_context
+def consolidate(ctx: click.Context, config_path: str, dry_run: bool) -> None:
+    """Consolidate duplicate media files according to source priority.
+
+    Shows the consolidation plan first. Without --dry-run, prompts for
+    confirmation before executing the live copy pipeline (FR4 safety gate,
+    T-05-01).
+    """
+    verbose: bool = ctx.obj["verbose"]
+
+    # Always show the dry-run plan first so the user can review before committing
+    plan = _run_consolidate(config_path, dry_run=True, verbose=verbose)
+    _print_plan(plan, verbose=verbose)
+
+    if dry_run:
+        click.echo("Dry run complete — no files written.")
+        return
+
+    # Confirmation gate (T-05-01): abort=True causes click.Abort on 'N' / Ctrl-C
+    click.confirm("Proceed with consolidation?", abort=True)
+
+    # Live run
+    plan = _run_consolidate(config_path, dry_run=False, verbose=verbose)
+    _print_plan(plan, verbose=verbose)
+    click.echo(
+        f"Consolidation complete. {len(plan.to_copy)} file(s) copied, "
+        f"{len(plan.errors)} error(s)."
     )
