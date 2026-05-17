@@ -3,19 +3,19 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: in_progress
-last_updated: "2026-05-16T00:30:00Z"
+last_updated: "2026-05-17T02:09:00Z"
 progress:
   total_phases: 5
   completed_phases: 1
   total_plans: 12
-  completed_plans: 8
-  percent: 33
+  completed_plans: 9
+  percent: 37
 ---
 
 # PhotoConsole Project State
 
 **Project Started**: 2026-05-16  
-**Current Status**: Phase 1 Complete — Phase 2 Planned (7 plans, Ready to Execute)
+**Current Status**: Phase 2 In Progress — Plan 02-06 Complete (test_dedup.py + test_consolidator.py)
 
 ---
 
@@ -42,19 +42,19 @@ progress:
 
 ## Next Steps
 
-Run `/gsd:execute-phase 2` to build dedup + consolidation pipeline.
+Run Plan 02-07: CLI integration tests (test_cli_phase2.py).
 
-## Phase 2 Progress (Ready to Execute)
+## Phase 2 Progress
 
-| Plan | Name | Status |
-|------|------|--------|
-| 02-01 | ConsolidationConfig dataclass + config extension | Planned |
-| 02-02 | dedup.py: DuplicateGroup, classify_group, find_duplicate_groups | Planned |
+| Plan | Name | Status | Commit |
+|------|------|--------|--------|
+| 02-01 | ConsolidationConfig dataclass + config extension | Done | (in place) |
+| 02-02 | dedup.py: DuplicateGroup, classify_group, find_duplicate_groups | Done | (in place) |
 | 02-03 | consolidator.py part 1: compute_dest_path, resolve_conflict, copy_and_verify | Done | 7681824 |
 | 02-04 | consolidator.py part 2: write_manifest, logger, preflight, run_consolidation | Done | 6de6003 |
 | 02-05 | CLI: report, plan-consolidation, consolidate commands | Done | 966eede |
-| 02-06 | Unit tests: test_dedup.py + test_consolidator.py | Planned |
-| 02-07 | CLI integration tests: test_cli_phase2.py | Planned |
+| 02-06 | Unit tests: test_dedup.py + test_consolidator.py | Done | 6200141 |
+| 02-07 | CLI integration tests: test_cli_phase2.py | Planned | — |
 
 ---
 
@@ -123,6 +123,8 @@ All project files live under `PhotoConsole/` in the working directory:
 
 **Phase 1 complete. All 5 plans executed. `photoconsole scan --config config.yaml` is fully operational.**
 
+**Phase 2 Plan 02-06 complete. test_dedup.py (8 tests) + test_consolidator.py (64 tests) green. 258 total tests pass.**
+
 ## Key Decisions (from execution)
 
 - ErrorType StrEnum with 6 members; classify_error excludes HASH_FAILED/METADATA_FAILED (set by call sites)
@@ -148,3 +150,6 @@ All project files live under `PhotoConsole/` in the working directory:
 - _run_report and _run_consolidate are pure helpers (no click API calls) following the _run_scan pattern from Phase 1
 - report command supports --output-format text/csv/json; text uses rich.table.Table lazy-imported inside _print_report
 - consolidate command shows dry-run plan first, then click.confirm(abort=True) before live run (FR4 safety gate)
+- test_dedup.py uses in-memory SQLite (_make_engine) with MediaFile attribute assignment (no __init__ kwargs) per plan spec
+- test_consolidator.py plan-02-06 tests added as standalone functions after class-based tests; _make_cfg() helper returns Config+ConsolidationConfig
+- test_compute_dest_path_mtime_fallback uses parts[-4] for 'unknown' — mtime path is root/unknown/YYYY/MM/name
