@@ -292,8 +292,12 @@ def _run_scan(config_path: str, verbose: bool = False, quiet: bool = False) -> d
 
 def _print_summary(summary: dict) -> None:
     """Print the final scan summary table to stdout."""
+    from datetime import datetime
+    import photoconsole
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     click.echo(
-        f"\nScan complete in {summary['elapsed_seconds']:.1f}s\n"
+        f"\nphotoconsole v{photoconsole.__version__}  |  {timestamp}\n"
+        f"Scan complete in {summary['elapsed_seconds']:.1f}s\n"
         f"  Total candidates : {summary['total_candidates']}\n"
         f"  Cataloged        : {summary['cataloged']}\n"
         f"  Skipped          : {summary['skipped']}\n"

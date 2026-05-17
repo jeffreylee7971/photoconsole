@@ -64,7 +64,14 @@ class LocalScanner:
 
         # Validate and resolve the root path eagerly so that errors surface
         # before any iteration begins.
-        root = Path(source.path).expanduser().resolve(strict=True)
+        try:
+            root = Path(source.path).expanduser().resolve(strict=True)
+        except PermissionError as exc:
+            raise PermissionError(
+                f"Permission denied accessing source {source.name!r} at {source.path!r}. "
+                f"Run as administrator or remove this source from config.yaml. "
+                f"Original error: {exc}"
+            ) from exc
         if not root.exists():
             raise FileNotFoundError(
                 f"LocalScanner root does not exist: {source.path!r}"
@@ -246,11 +253,15 @@ def scan_all(
     """
     for source in config.sources:
         if source.type == "local":
-            scanner: LocalScanner | RcloneScanner = LocalScanner(
-                source,
-                config.include_extensions,
-                verbose=verbose,
-            )
+            try:
+                scanner: LocalScanner | RcloneScanner = LocalScanner(
+                    source,
+                    config.include_extensions,
+                    verbose=verbose,
+                )
+            except (PermissionError, FileNotFoundError, NotADirectoryError) as exc:
+                logger.warning("Skipping source %r: %s", source.name, exc)
+                continue
         elif source.type == "rclone":
             scanner = RcloneScanner(
                 source,
