@@ -290,3 +290,380 @@ class TestCopyAndVerify:
         # Source must still exist and be unchanged
         assert src.exists()
         assert src.read_bytes() == b"precious photo"
+
+
+# ---------------------------------------------------------------------------
+# Plan 04 — Task 1: write_manifest
+# ---------------------------------------------------------------------------
+
+class TestWriteManifest:
+    """write_manifest(rows, dest_dir) -> tuple[Path, Path]."""
+
+    def test_returns_two_paths(self, tmp_path):
+        """write_manifest returns a 2-tuple of (csv_path, bat_path)."""
+        from photoconsole.consolidator import write_manifest
+
+        result = write_manifest([], tmp_path)
+        assert isinstance(result, tuple)
+        assert len(result) == 2
+
+    def test_csv_has_correct_columns(self, tmp_path):
+        """CSV contains header row with original_path,hash,destination_path,source_name."""
+        import csv as _csv
+        from photoconsole.consolidator import write_manifest
+
+        rows = [
+            {
+                'original_path': r'C:\photos\a.jpg',
+                'hash': 'aabbcc',
+                'destination_path': r'D:\Library\2023\06\a.jpg',
+                'source_name': 'OneDrive',
+                'source_type': 'rclone',
+            }
+        ]
+        csv_path, _ = write_manifest(rows, tmp_path)
+        assert csv_path.exists()
+        with open(csv_path, newline='', encoding='utf-8') as f:
+            reader = _csv.DictReader(f)
+            data = list(reader)
+        assert set(data[0].keys()) >= {'original_path', 'hash', 'destination_path', 'source_name'}
+        assert data[0]['original_path'] == r'C:\photos\a.jpg'
+        assert data[0]['hash'] == 'aabbcc'
+
+    def test_bat_has_echo_off_and_chcp(self, tmp_path):
+        """The .bat file starts with @echo off and chcp 65001 >nul."""
+        from photoconsole.consolidator import write_manifest
+
+        _, bat_path = write_manifest([], tmp_path)
+        text = bat_path.read_text(encoding='utf-8-sig')
+        assert '@echo off' in text
+        assert 'chcp 65001' in text
+
+    def test_bat_utf8_sig_encoding(self, tmp_path):
+        """The .bat file is written with utf-8-sig (BOM) encoding."""
+        from photoconsole.consolidator import write_manifest
+
+        _, bat_path = write_manifest([], tmp_path)
+        raw = bat_path.read_bytes()
+        assert raw[:3] == b'\xef\xbb\xbf', "Expected UTF-8 BOM at start of .bat file"
+
+    def test_local_row_emits_del_f(self, tmp_path):
+        """Local-source rows emit 'del /f \"path\"' in the .bat file."""
+        from photoconsole.consolidator import write_manifest
+
+        rows = [
+            {
+                'original_path': r'D:\old\photo.jpg',
+                'hash': 'deadbeef',
+                'destination_path': r'D:\Library\2023\06\photo.jpg',
+                'source_name': 'D: SSD',
+                'source_type': 'local',
+            }
+        ]
+        _, bat_path = write_manifest(rows, tmp_path)
+        text = bat_path.read_text(encoding='utf-8-sig')
+        assert 'del /f' in text
+        assert r'D:\old\photo.jpg' in text
+
+    def test_rclone_row_emits_comment(self, tmp_path):
+        """rclone-source rows emit ':: rclone deletefile ...' (not del /f)."""
+        from photoconsole.consolidator import write_manifest
+
+        rows = [
+            {
+                'original_path': 'onedrive:Photos/a.jpg',
+                'hash': 'cafebabe',
+                'destination_path': r'D:\Library\2023\06\a.jpg',
+                'source_name': 'OneDrive',
+                'source_type': 'rclone',
+            }
+        ]
+        _, bat_path = write_manifest(rows, tmp_path)
+        text = bat_path.read_text(encoding='utf-8-sig')
+        assert ':: rclone deletefile' in text
+        assert 'del /f' not in text
+
+    def test_bat_crlf_line_endings(self, tmp_path):
+        """The .bat file uses \\r\\n line endings."""
+        from photoconsole.consolidator import write_manifest
+
+        _, bat_path = write_manifest([], tmp_path)
+        raw = bat_path.read_bytes()
+        # Strip BOM and check for \r\n
+        content = raw[3:]  # skip UTF-8 BOM
+        assert b'\r\n' in content
+
+    def test_timestamp_filenames(self, tmp_path):
+        """Files are named deletion_manifest_TIMESTAMP.csv and delete_originals_TIMESTAMP.bat."""
+        from photoconsole.consolidator import write_manifest
+        import re
+
+        csv_path, bat_path = write_manifest([], tmp_path)
+        assert re.match(r'deletion_manifest_\d{8}_\d{6}\.csv', csv_path.name)
+        assert re.match(r'delete_originals_\d{8}_\d{6}\.bat', bat_path.name)
+
+
+# ---------------------------------------------------------------------------
+# Plan 04 — Task 1: check_destination_writable
+# ---------------------------------------------------------------------------
+
+class TestCheckDestinationWritable:
+    """check_destination_writable(dest_path_str) -> None or raises RuntimeError."""
+
+    def test_empty_string_raises_runtime_error(self):
+        """Empty string raises RuntimeError mentioning destination_path."""
+        from photoconsole.consolidator import check_destination_writable
+
+        with pytest.raises(RuntimeError, match='destination_path'):
+            check_destination_writable('')
+
+    def test_whitespace_string_raises_runtime_error(self):
+        """All-whitespace string raises RuntimeError (treated as empty)."""
+        from photoconsole.consolidator import check_destination_writable
+
+        with pytest.raises(RuntimeError, match='destination_path'):
+            check_destination_writable('   ')
+
+    def test_creates_directory_if_absent(self, tmp_path):
+        """Valid path that does not yet exist is created without error."""
+        from photoconsole.consolidator import check_destination_writable
+
+        new_dir = tmp_path / 'new_subdir'
+        assert not new_dir.exists()
+        check_destination_writable(str(new_dir))
+        assert new_dir.exists()
+
+    def test_existing_writable_dir_returns_none(self, tmp_path):
+        """Existing writable directory returns None (no error)."""
+        from photoconsole.consolidator import check_destination_writable
+
+        result = check_destination_writable(str(tmp_path))
+        assert result is None
+
+
+# ---------------------------------------------------------------------------
+# Plan 04 — Task 1: setup_consolidation_logger
+# ---------------------------------------------------------------------------
+
+class TestSetupConsolidationLogger:
+    """setup_consolidation_logger(log_path) -> logging.Logger."""
+
+    def test_returns_logger(self, tmp_path):
+        """setup_consolidation_logger returns a logging.Logger."""
+        import logging
+        from photoconsole.consolidator import setup_consolidation_logger
+
+        logger = setup_consolidation_logger(tmp_path / 'test.log')
+        assert isinstance(logger, logging.Logger)
+
+    def test_appends_to_log_file(self, tmp_path):
+        """Logger writes messages append-mode to the given log_path."""
+        from photoconsole.consolidator import setup_consolidation_logger
+
+        log_path = tmp_path / 'cons.log'
+        logger = setup_consolidation_logger(log_path)
+        logger.info('TEST | src=a | dest=b | hash=c | outcome=ok')
+        assert log_path.exists()
+        text = log_path.read_text(encoding='utf-8')
+        assert 'TEST' in text
+
+    def test_no_duplicate_handlers_on_second_call(self, tmp_path):
+        """Calling setup_consolidation_logger twice does not add duplicate handlers."""
+        import logging
+        from photoconsole.consolidator import setup_consolidation_logger
+
+        log_path = tmp_path / 'dedup.log'
+        logger1 = setup_consolidation_logger(log_path)
+        handler_count_after_first = len(logger1.handlers)
+        logger2 = setup_consolidation_logger(log_path)
+        # handler count must not grow on second call
+        assert len(logger2.handlers) == handler_count_after_first
+
+    def test_creates_parent_directories(self, tmp_path):
+        """setup_consolidation_logger creates missing parent directories."""
+        from photoconsole.consolidator import setup_consolidation_logger
+
+        nested_log = tmp_path / 'subdir' / 'logs' / 'cons.log'
+        setup_consolidation_logger(nested_log)
+        assert nested_log.parent.exists()
+
+
+# ---------------------------------------------------------------------------
+# Plan 04 — Task 2: run_consolidation
+# ---------------------------------------------------------------------------
+
+class TestRunConsolidation:
+    """run_consolidation(groups, config, dry_run, log_path) -> ConsolidationPlan."""
+
+    def _make_media_file(self, path: str, hash_: str, source_name: str, source_type: str,
+                          date_taken: str | None = '2023:06:15 10:30:00') -> object:
+        """Build a minimal MediaFile-like object for testing."""
+        from photoconsole.catalog.models import MediaFile
+        f = MediaFile()
+        f.path = path
+        f.hash = hash_
+        f.source_name = source_name
+        f.source_type = source_type
+        f.date_taken = date_taken
+        f.mtime = None
+        return f
+
+    def _make_config(self, dest_root: str, catalog_path: str) -> object:
+        """Build a minimal Config for testing."""
+        from photoconsole.config import Config, ConsolidationConfig
+        return Config(
+            sources=[],
+            catalog_path=catalog_path,
+            consolidation=ConsolidationConfig(
+                destination_path=dest_root,
+                source_priority=['D: SSD', 'OneDrive'],
+            ),
+        )
+
+    def test_dry_run_returns_plan_with_to_copy(self, tmp_path):
+        """dry_run=True populates to_copy but writes no files."""
+        import hashlib
+        from photoconsole.consolidator import run_consolidation
+        from photoconsole.dedup import DuplicateGroup
+
+        src = tmp_path / 'src.jpg'
+        src.write_bytes(b'photobytes')
+        h = hashlib.sha256(b'photobytes').hexdigest()
+
+        f = self._make_media_file(str(src), h, 'OneDrive', 'rclone')
+        group = DuplicateGroup(hash=h, canonical=f, redundants=[], needs_copy=True)
+        dest_root = tmp_path / 'Library'
+        cfg = self._make_config(str(dest_root), str(tmp_path / 'catalog.db'))
+
+        plan = run_consolidation([group], cfg, dry_run=True)
+
+        assert len(plan.to_copy) == 1
+        # Dry run: no files written to dest_root
+        if dest_root.exists():
+            assert list(dest_root.rglob('*')) == [], "dry_run must write no media files"
+
+    def test_dry_run_writes_no_manifest_files(self, tmp_path):
+        """dry_run=True writes no CSV, no .bat, no log."""
+        import hashlib
+        from photoconsole.consolidator import run_consolidation
+        from photoconsole.dedup import DuplicateGroup
+
+        src = tmp_path / 'src.jpg'
+        src.write_bytes(b'photobytes')
+        h = hashlib.sha256(b'photobytes').hexdigest()
+
+        f = self._make_media_file(str(src), h, 'OneDrive', 'rclone')
+        group = DuplicateGroup(hash=h, canonical=f, redundants=[], needs_copy=True)
+        dest_root = tmp_path / 'Library'
+        cfg = self._make_config(str(dest_root), str(tmp_path / 'catalog.db'))
+
+        run_consolidation([group], cfg, dry_run=True)
+
+        # No .csv or .bat written
+        assert list(tmp_path.rglob('*.csv')) == []
+        assert list(tmp_path.rglob('*.bat')) == []
+
+    def test_live_run_copies_file_to_destination(self, tmp_path):
+        """dry_run=False copies the canonical file into dest_root/YYYY/MM/filename."""
+        import hashlib
+        from photoconsole.consolidator import run_consolidation
+        from photoconsole.dedup import DuplicateGroup
+
+        src = tmp_path / 'src.jpg'
+        src.write_bytes(b'photobytes')
+        h = hashlib.sha256(b'photobytes').hexdigest()
+
+        f = self._make_media_file(str(src), h, 'OneDrive', 'rclone')
+        group = DuplicateGroup(hash=h, canonical=f, redundants=[], needs_copy=True)
+        dest_root = tmp_path / 'Library'
+        cfg = self._make_config(str(dest_root), str(tmp_path / 'catalog.db'))
+
+        plan = run_consolidation([group], cfg, dry_run=False)
+
+        assert len(plan.to_copy) == 1
+        expected_dest = dest_root / '2023' / '06' / 'src.jpg'
+        assert expected_dest.exists()
+
+    def test_needs_copy_false_adds_to_skipped(self, tmp_path):
+        """needs_copy=False group goes to plan.skipped, not plan.to_copy."""
+        import hashlib
+        from photoconsole.consolidator import run_consolidation
+        from photoconsole.dedup import DuplicateGroup
+
+        src = tmp_path / 'local.jpg'
+        src.write_bytes(b'local')
+        h = hashlib.sha256(b'local').hexdigest()
+
+        f = self._make_media_file(str(src), h, 'D: SSD', 'local')
+        group = DuplicateGroup(hash=h, canonical=f, redundants=[], needs_copy=False)
+        dest_root = tmp_path / 'Library'
+        cfg = self._make_config(str(dest_root), str(tmp_path / 'catalog.db'))
+
+        plan = run_consolidation([group], cfg, dry_run=False)
+
+        assert len(plan.skipped) == 1
+        assert len(plan.to_copy) == 0
+
+    def test_needs_copy_false_redundants_go_to_manifest(self, tmp_path):
+        """needs_copy=False group: redundants go to plan.to_manifest."""
+        import hashlib
+        from photoconsole.consolidator import run_consolidation
+        from photoconsole.dedup import DuplicateGroup
+
+        h = hashlib.sha256(b'same').hexdigest()
+        canonical = self._make_media_file(str(tmp_path / 'local.jpg'), h, 'D: SSD', 'local')
+        redundant = self._make_media_file('onedrive:Photos/a.jpg', h, 'OneDrive', 'rclone')
+        group = DuplicateGroup(hash=h, canonical=canonical, redundants=[redundant], needs_copy=False)
+        dest_root = tmp_path / 'Library'
+        cfg = self._make_config(str(dest_root), str(tmp_path / 'catalog.db'))
+
+        plan = run_consolidation([group], cfg, dry_run=False)
+
+        assert len(plan.to_manifest) == 1
+        assert plan.to_manifest[0]['original_path'] == 'onedrive:Photos/a.jpg'
+
+    def test_live_run_writes_manifest_when_non_empty(self, tmp_path):
+        """dry_run=False with non-empty to_manifest writes a CSV and .bat file."""
+        import hashlib
+        from photoconsole.consolidator import run_consolidation
+        from photoconsole.dedup import DuplicateGroup
+
+        h = hashlib.sha256(b'same').hexdigest()
+        canonical = self._make_media_file(str(tmp_path / 'local.jpg'), h, 'D: SSD', 'local')
+        (tmp_path / 'local.jpg').write_bytes(b'same')
+        redundant = self._make_media_file('onedrive:Photos/a.jpg', h, 'OneDrive', 'rclone')
+        group = DuplicateGroup(hash=h, canonical=canonical, redundants=[redundant], needs_copy=False)
+        dest_root = tmp_path / 'Library'
+        dest_root.mkdir()
+        cfg = self._make_config(str(dest_root), str(tmp_path / 'catalog.db'))
+
+        run_consolidation([group], cfg, dry_run=False)
+
+        assert list(dest_root.rglob('*.csv')) != []
+        assert list(dest_root.rglob('*.bat')) != []
+
+    def test_resolve_conflict_none_adds_to_skipped(self, tmp_path):
+        """When resolve_conflict returns None (already present), adds to skipped."""
+        import hashlib
+        from photoconsole.consolidator import run_consolidation
+        from photoconsole.dedup import DuplicateGroup
+
+        content = b'photobytes'
+        h = hashlib.sha256(content).hexdigest()
+        src = tmp_path / 'src.jpg'
+        src.write_bytes(content)
+
+        # Pre-place file at the expected dest so resolve_conflict returns None
+        dest_root = tmp_path / 'Library'
+        expected_dest = dest_root / '2023' / '06' / 'src.jpg'
+        expected_dest.parent.mkdir(parents=True, exist_ok=True)
+        expected_dest.write_bytes(content)
+
+        f = self._make_media_file(str(src), h, 'OneDrive', 'rclone')
+        group = DuplicateGroup(hash=h, canonical=f, redundants=[], needs_copy=True)
+        cfg = self._make_config(str(dest_root), str(tmp_path / 'catalog.db'))
+
+        plan = run_consolidation([group], cfg, dry_run=False)
+
+        assert len(plan.skipped) == 1
+        assert len(plan.to_copy) == 0
