@@ -30,6 +30,7 @@ from configuration concerns.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from itertools import groupby
 from typing import List
 
 from sqlalchemy import func, select
@@ -147,29 +148,30 @@ def find_duplicate_groups(
         List of DuplicateGroup instances, one per duplicated hash.
         Returns an empty list when the catalog has no duplicates.
     """
-    # Step 1: find all hashes with more than one ok row
-    dup_hash_stmt = (
+    # Step 1: subquery of hashes with more than one ok row
+    dup_hash_subq = (
         select(MediaFile.hash)
         .where(MediaFile.hash.isnot(None))
         .where(MediaFile.status == "ok")
         .group_by(MediaFile.hash)
         .having(func.count(MediaFile.id) > 1)
+        .subquery()
     )
-    dup_hashes: List[str] = [
-        row.hash for row in session.execute(dup_hash_stmt)
-    ]
 
-    # Step 2 & 3: fetch rows per hash and classify
+    # Step 2: fetch ALL rows for those hashes in a single JOIN query
+    files_stmt = (
+        select(MediaFile)
+        .join(dup_hash_subq, MediaFile.hash == dup_hash_subq.c.hash)
+        .where(MediaFile.status == "ok")
+        .order_by(MediaFile.hash)
+    )
+    all_files: List[MediaFile] = list(
+        session.execute(files_stmt).scalars().all()
+    )
+
+    # Step 3: group in Python and classify (avoids N+1 queries for 85K+ groups)
     groups: List[DuplicateGroup] = []
-    for hash_val in dup_hashes:
-        files_stmt = (
-            select(MediaFile)
-            .where(MediaFile.hash == hash_val)
-            .where(MediaFile.status == "ok")
-        )
-        files: List[MediaFile] = list(
-            session.execute(files_stmt).scalars().all()
-        )
-        groups.append(classify_group(files, source_priority))
+    for _hash_val, file_iter in groupby(all_files, key=lambda f: f.hash):
+        groups.append(classify_group(list(file_iter), source_priority))
 
     return groups

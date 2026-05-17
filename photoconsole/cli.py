@@ -353,15 +353,32 @@ def _run_report(
     return groups
 
 
-def _print_report(groups, output_format: str, quiet: bool) -> None:
-    """Render duplicate groups in the requested format to stdout.
+def _print_report(
+    groups, output_format: str, quiet: bool, output_path: str | None = None
+) -> None:
+    """Render duplicate groups in the requested format to stdout or a file.
 
     Args:
         groups:        list[DuplicateGroup] from _run_report.
         output_format: 'text' | 'csv' | 'json'
         quiet:         When True this function should not be called (the caller
                        guards it), but we accept it here for interface symmetry.
+        output_path:   If set, write output to this file path instead of stdout.
+                       A one-line summary is always printed to the terminal.
     """
+    import io
+
+    def _build_rows():
+        for group in groups:
+            all_files = [group.canonical] + group.redundants
+            total_size = sum(f.size or 0 for f in all_files)
+            sources = ", ".join(
+                sorted({f.source_name for f in all_files if f.source_name})
+            )
+            dates = [f.date_taken for f in all_files if f.date_taken]
+            date_range = f"{min(dates)} .. {max(dates)}" if dates else "unknown"
+            yield (group.hash or "")[:12], len(all_files), total_size, sources, date_range
+
     if output_format == "text":
         from rich.console import Console
         from rich.table import Table
@@ -373,65 +390,50 @@ def _print_report(groups, output_format: str, quiet: bool) -> None:
         table.add_column("Sources")
         table.add_column("Date Range")
 
-        for group in groups:
-            all_files = [group.canonical] + group.redundants
-            total_size = sum(f.size or 0 for f in all_files)
-            sources = ", ".join(
-                sorted({f.source_name for f in all_files if f.source_name})
-            )
-            dates = [f.date_taken for f in all_files if f.date_taken]
-            date_range = f"{min(dates)} .. {max(dates)}" if dates else "unknown"
+        for hash_, count, total_size, sources, date_range in _build_rows():
             table.add_row(
-                (group.hash or "")[:12],
-                str(len(all_files)),
+                hash_,
+                str(count),
                 f"{total_size / 1_048_576:.1f} MB",
                 sources,
                 date_range,
             )
 
-        Console().print(table)
+        if output_path:
+            buf = io.StringIO()
+            Console(file=buf, no_color=True, width=200).print(table)
+            with open(output_path, "w", encoding="utf-8") as fh:
+                fh.write(buf.getvalue())
+            click.echo(f"{len(groups):,} groups written to {output_path}")
+        else:
+            Console().print(table)
 
     elif output_format == "csv":
-        writer = csv.writer(sys.stdout)
-        writer.writerow(["hash", "count", "total_size", "sources", "date_range"])
-        for group in groups:
-            all_files = [group.canonical] + group.redundants
-            total_size = sum(f.size or 0 for f in all_files)
-            sources = ", ".join(
-                sorted({f.source_name for f in all_files if f.source_name})
-            )
-            dates = [f.date_taken for f in all_files if f.date_taken]
-            date_range = f"{min(dates)} .. {max(dates)}" if dates else "unknown"
-            writer.writerow(
-                [
-                    (group.hash or "")[:12],
-                    len(all_files),
-                    total_size,
-                    sources,
-                    date_range,
-                ]
-            )
+        rows = list(_build_rows())
+        if output_path:
+            with open(output_path, "w", newline="", encoding="utf-8") as fh:
+                writer = csv.writer(fh)
+                writer.writerow(["hash", "count", "total_size", "sources", "date_range"])
+                writer.writerows(
+                    [h, c, ts, src, dr] for h, c, ts, src, dr in rows
+                )
+            click.echo(f"{len(groups):,} groups written to {output_path}")
+        else:
+            writer = csv.writer(sys.stdout)
+            writer.writerow(["hash", "count", "total_size", "sources", "date_range"])
+            writer.writerows([h, c, ts, src, dr] for h, c, ts, src, dr in rows)
 
     elif output_format == "json":
-        rows = []
-        for group in groups:
-            all_files = [group.canonical] + group.redundants
-            total_size = sum(f.size or 0 for f in all_files)
-            sources = ", ".join(
-                sorted({f.source_name for f in all_files if f.source_name})
-            )
-            dates = [f.date_taken for f in all_files if f.date_taken]
-            date_range = f"{min(dates)} .. {max(dates)}" if dates else "unknown"
-            rows.append(
-                {
-                    "hash": (group.hash or "")[:12],
-                    "count": len(all_files),
-                    "total_size_bytes": total_size,
-                    "sources": sources,
-                    "date_range": date_range,
-                }
-            )
-        print(json.dumps(rows, indent=2))
+        json_rows = [
+            {"hash": h, "count": c, "total_size_bytes": ts, "sources": src, "date_range": dr}
+            for h, c, ts, src, dr in _build_rows()
+        ]
+        if output_path:
+            with open(output_path, "w", encoding="utf-8") as fh:
+                json.dump(json_rows, fh, indent=2)
+            click.echo(f"{len(groups):,} groups written to {output_path}")
+        else:
+            print(json.dumps(json_rows, indent=2))
 
 
 @main.command()
@@ -448,12 +450,19 @@ def _print_report(groups, output_format: str, quiet: bool) -> None:
     show_default=True,
     help="Output format for the report.",
 )
+@click.option(
+    "--output", "output_path",
+    default=None,
+    type=click.Path(dir_okay=False, writable=True),
+    help="Write report to this file instead of stdout.",
+)
 @click.pass_context
-def report(ctx: click.Context, config_path: str, output_format: str) -> None:
+def report(ctx: click.Context, config_path: str, output_format: str, output_path: str | None) -> None:
     """Report duplicate media groups found in the catalog.
 
     Queries the catalog for files sharing the same SHA-256 hash and displays
-    a summary table (text), CSV rows, or a JSON array.
+    a summary table (text), CSV rows, or a JSON array.  Use --output FILE to
+    write the full report to a file instead of the terminal.
     """
     verbose: bool = ctx.obj["verbose"]
     quiet: bool = ctx.obj["quiet"]
@@ -461,7 +470,7 @@ def report(ctx: click.Context, config_path: str, output_format: str) -> None:
     groups = _run_report(config_path, output_format, verbose, quiet)
 
     if not quiet:
-        _print_report(groups, output_format, quiet)
+        _print_report(groups, output_format, quiet, output_path)
 
 
 # ---------------------------------------------------------------------------
