@@ -42,7 +42,7 @@ Plans:
 - [x] 01-02-PLAN.md — Catalog persistence: SQLAlchemy MediaFile model, WAL engine, UPSERT + incremental skip (Wave 2)
 - [x] 01-03-PLAN.md — Hashing + photo EXIF + video ffprobe metadata extractors, ThreadPoolExecutor orchestration (Wave 2)
 - [x] 01-04-PLAN.md — LocalScanner + RcloneScanner with symlink skip and subprocess rclone integration (Wave 2)
-- [ ] 01-05-PLAN.md — CLI: click group, scan command, dependency gates, end-to-end writer-thread orchestration (Wave 3)
+- [x] 01-05-PLAN.md — CLI: click group, scan command, dependency gates, end-to-end writer-thread orchestration (Wave 3) — DONE 13f9c30
 
 ---
 
@@ -79,9 +79,9 @@ Plans:
 **Plans**: 7 plans across 6 waves
 
 Plans:
-- [ ] 02-01-PLAN.md — ConsolidationConfig dataclass + load_config extension for consolidation YAML section (Wave 1)
-- [ ] 02-02-PLAN.md — dedup.py: DuplicateGroup dataclass, classify_group(), find_duplicate_groups() (Wave 2)
-- [ ] 02-03-PLAN.md — consolidator.py part 1: compute_dest_path, resolve_conflict, copy_and_verify pure functions (Wave 3)
+- [x] 02-01-PLAN.md — ConsolidationConfig dataclass + load_config extension for consolidation YAML section (Wave 1) — DONE e47dbab
+- [x] 02-02-PLAN.md — dedup.py: DuplicateGroup dataclass, classify_group(), find_duplicate_groups() (Wave 2) — DONE 150e604
+- [x] 02-03-PLAN.md — consolidator.py part 1: compute_dest_path, resolve_conflict, copy_and_verify pure functions (Wave 3) — DONE 7681824
 - [ ] 02-04-PLAN.md — consolidator.py part 2: write_manifest, setup_consolidation_logger, check_destination_writable, run_consolidation orchestrator (Wave 4)
 - [ ] 02-05-PLAN.md — CLI extension: _run_report, report command, _run_consolidate, plan-consolidation, consolidate commands (Wave 5)
 - [ ] 02-06-PLAN.md — Unit tests: test_dedup.py + test_consolidator.py (Wave 5, parallel with 02-05)

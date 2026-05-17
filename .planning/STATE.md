@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: in_progress
-last_updated: "2026-05-16T19:30:00.000Z"
+last_updated: "2026-05-17T00:15:46Z"
 progress:
   total_phases: 5
   completed_phases: 1
   total_plans: 12
-  completed_plans: 5
-  percent: 20
+  completed_plans: 6
+  percent: 24
 ---
 
 # PhotoConsole Project State
@@ -50,7 +50,7 @@ Run `/gsd:execute-phase 2` to build dedup + consolidation pipeline.
 |------|------|--------|
 | 02-01 | ConsolidationConfig dataclass + config extension | Planned |
 | 02-02 | dedup.py: DuplicateGroup, classify_group, find_duplicate_groups | Planned |
-| 02-03 | consolidator.py part 1: compute_dest_path, resolve_conflict, copy_and_verify | Planned |
+| 02-03 | consolidator.py part 1: compute_dest_path, resolve_conflict, copy_and_verify | Done | 7681824 |
 | 02-04 | consolidator.py part 2: write_manifest, logger, preflight, run_consolidation | Planned |
 | 02-05 | CLI: report, plan-consolidation, consolidate commands | Planned |
 | 02-06 | Unit tests: test_dedup.py + test_consolidator.py | Planned |
@@ -139,3 +139,6 @@ All project files live under `PhotoConsole/` in the working directory:
 - ffprobe gate fires only when include_extensions & VIDEO_EXTENSIONS is non-empty (D-13); photo-only users bypass it entirely
 - rclone candidates always re-processed in Phase 1 (mtime=None → should_skip=False); rclone mtime deferred to Phase 2
 - All upsert_many calls on main thread only; worker threads return result dicts (T-02-02/T-05-02)
+- resolve_conflict checks sha256 at each stem_N slot — prevents copy accumulation on idempotent re-runs (Pitfall 3)
+- compute_dest_path uses Path(filename).name — only basename used regardless of input path
+- copy_and_verify wraps FileNotFoundError+OSError for full Pitfall 7 coverage; never touches source file (D-13)
