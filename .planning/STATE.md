@@ -8,8 +8,8 @@ progress:
   total_phases: 5
   completed_phases: 1
   total_plans: 12
-  completed_plans: 7
-  percent: 28
+  completed_plans: 8
+  percent: 33
 ---
 
 # PhotoConsole Project State
@@ -52,7 +52,7 @@ Run `/gsd:execute-phase 2` to build dedup + consolidation pipeline.
 | 02-02 | dedup.py: DuplicateGroup, classify_group, find_duplicate_groups | Planned |
 | 02-03 | consolidator.py part 1: compute_dest_path, resolve_conflict, copy_and_verify | Done | 7681824 |
 | 02-04 | consolidator.py part 2: write_manifest, logger, preflight, run_consolidation | Done | 6de6003 |
-| 02-05 | CLI: report, plan-consolidation, consolidate commands | Planned |
+| 02-05 | CLI: report, plan-consolidation, consolidate commands | Done | 966eede |
 | 02-06 | Unit tests: test_dedup.py + test_consolidator.py | Planned |
 | 02-07 | CLI integration tests: test_cli_phase2.py | Planned |
 
@@ -145,3 +145,6 @@ All project files live under `PhotoConsole/` in the working directory:
 - setup_consolidation_logger guards duplicate handlers by exact baseFilename match (not just bool(logger.handlers)) for per-path deduplication across pytest test runs
 - write_manifest uses extrasaction='ignore' in DictWriter — drops source_type from D-11 CSV while using it for .bat routing
 - run_consolidation writes manifest after all copies complete; dry_run populates to_manifest for inspection but skips write_manifest call
+- _run_report and _run_consolidate are pure helpers (no click API calls) following the _run_scan pattern from Phase 1
+- report command supports --output-format text/csv/json; text uses rich.table.Table lazy-imported inside _print_report
+- consolidate command shows dry-run plan first, then click.confirm(abort=True) before live run (FR4 safety gate)
