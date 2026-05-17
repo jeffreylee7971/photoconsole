@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: in_progress
-last_updated: "2026-05-17T00:15:46Z"
+last_updated: "2026-05-16T00:30:00Z"
 progress:
   total_phases: 5
   completed_phases: 1
   total_plans: 12
-  completed_plans: 6
-  percent: 24
+  completed_plans: 7
+  percent: 28
 ---
 
 # PhotoConsole Project State
@@ -51,7 +51,7 @@ Run `/gsd:execute-phase 2` to build dedup + consolidation pipeline.
 | 02-01 | ConsolidationConfig dataclass + config extension | Planned |
 | 02-02 | dedup.py: DuplicateGroup, classify_group, find_duplicate_groups | Planned |
 | 02-03 | consolidator.py part 1: compute_dest_path, resolve_conflict, copy_and_verify | Done | 7681824 |
-| 02-04 | consolidator.py part 2: write_manifest, logger, preflight, run_consolidation | Planned |
+| 02-04 | consolidator.py part 2: write_manifest, logger, preflight, run_consolidation | Done | 6de6003 |
 | 02-05 | CLI: report, plan-consolidation, consolidate commands | Planned |
 | 02-06 | Unit tests: test_dedup.py + test_consolidator.py | Planned |
 | 02-07 | CLI integration tests: test_cli_phase2.py | Planned |
@@ -142,3 +142,6 @@ All project files live under `PhotoConsole/` in the working directory:
 - resolve_conflict checks sha256 at each stem_N slot — prevents copy accumulation on idempotent re-runs (Pitfall 3)
 - compute_dest_path uses Path(filename).name — only basename used regardless of input path
 - copy_and_verify wraps FileNotFoundError+OSError for full Pitfall 7 coverage; never touches source file (D-13)
+- setup_consolidation_logger guards duplicate handlers by exact baseFilename match (not just bool(logger.handlers)) for per-path deduplication across pytest test runs
+- write_manifest uses extrasaction='ignore' in DictWriter — drops source_type from D-11 CSV while using it for .bat routing
+- run_consolidation writes manifest after all copies complete; dry_run populates to_manifest for inspection but skips write_manifest call

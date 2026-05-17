@@ -68,13 +68,13 @@
 **So that** I can manage and prune from one place  
 
 **Acceptance Criteria:**
-- [ ] Plan consolidation: show source → destination mapping, verify no overwrites
-- [ ] Dry-run mode: preview all changes without modifying files
-- [ ] Organize by date (YYYY/MM/DD or YYYY-MM structure)
-- [ ] Handle naming conflicts (timestamp, sequence number, or user choice)
-- [ ] Copy (never move) primary files to backup library
-- [ ] Require explicit confirmation before any write operation
-- [ ] Log all operations for audit trail
+- [x] Plan consolidation: show source → destination mapping, verify no overwrites — run_consolidation dry_run=True (Plan 04)
+- [x] Dry-run mode: preview all changes without modifying files — dry_run gate in run_consolidation (Plan 04)
+- [x] Organize by date (YYYY/MM/DD or YYYY-MM structure) — compute_dest_path YYYY/MM (Plan 03)
+- [x] Handle naming conflicts (timestamp, sequence number, or user choice) — resolve_conflict stem_N suffix (Plan 03)
+- [x] Copy (never move) primary files to backup library — copy_and_verify + shutil.copy2 (Plan 03)
+- [ ] Require explicit confirmation before any write operation — Plan 05 CLI confirm prompt
+- [x] Log all operations for audit trail — setup_consolidation_logger + run_consolidation log entries (Plan 04)
 
 **Technical Notes:**
 - Consolidation target: single backup drive path (configured at startup)
