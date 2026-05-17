@@ -85,7 +85,7 @@ Plans:
 - [x] 02-04-PLAN.md — consolidator.py part 2: write_manifest, setup_consolidation_logger, check_destination_writable, run_consolidation orchestrator (Wave 4) — DONE 6de6003
 - [x] 02-05-PLAN.md — CLI extension: _run_report, report command, _run_consolidate, plan-consolidation, consolidate commands (Wave 5) — DONE 966eede
 - [x] 02-06-PLAN.md — Unit tests: test_dedup.py (8 tests) + test_consolidator.py (64 tests), 258 total pass (Wave 5) — DONE 6200141
-- [ ] 02-07-PLAN.md — CLI integration tests: test_cli_phase2.py covering all three new commands (Wave 6)
+- [x] 02-07-PLAN.md — CLI integration tests: test_cli_phase2.py — 30 CliRunner tests covering report/plan-consolidation/consolidate (Wave 6) — DONE 1ca221e
 
 ---
 
