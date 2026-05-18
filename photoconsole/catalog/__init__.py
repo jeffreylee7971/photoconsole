@@ -18,6 +18,7 @@ Example::
 """
 from photoconsole.catalog.models import Base, MediaFile
 from photoconsole.catalog.db import (
+    build_skip_index,
     create_catalog_engine,
     session_factory,
     upsert_media_file,
@@ -29,6 +30,7 @@ from photoconsole.catalog.db import (
 __all__ = [
     "Base",
     "MediaFile",
+    "build_skip_index",
     "create_catalog_engine",
     "session_factory",
     "upsert_media_file",

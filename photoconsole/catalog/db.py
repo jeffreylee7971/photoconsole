@@ -188,6 +188,21 @@ def upsert_many(session: Session, records: Iterable[dict]) -> int:
 # ---------------------------------------------------------------------------
 
 
+def build_skip_index(session: Session) -> dict[str, tuple[float | None, str | None]]:
+    """Load path/mtime/status for all catalog rows into a dict (one query).
+
+    Used by the fast incremental skip-check path to avoid N individual
+    SELECT queries during a scan (533K rows → 533K queries → very slow).
+
+    Returns:
+        Dict mapping path → (mtime, status).
+    """
+    rows = session.execute(
+        select(MediaFile.path, MediaFile.mtime, MediaFile.status)
+    ).all()
+    return {row.path: (row.mtime, row.status) for row in rows}
+
+
 def should_skip(session: Session, path: str, mtime: float) -> bool:
     """Return True iff the file at *path* is unchanged and previously succeeded.
 

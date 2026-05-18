@@ -38,11 +38,13 @@ import logging
 import sys
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import click
 
 from photoconsole.catalog import (
+    build_skip_index,
     create_catalog_engine,
     session_factory,
     should_skip,
@@ -187,34 +189,61 @@ def _run_scan(config_path: str, verbose: bool = False, quiet: bool = False) -> d
     SessionLocal = session_factory(engine)
 
     # --- Step 4: Discover all candidates (full list — T-05-04 accepted for ≤100K) ---
-    candidates = list(scan_all(cfg, verbose=verbose))
+    if not quiet:
+        click.echo(f"[1/3] Discovering files from {len(cfg.sources)} source(s)...")
+
+    def _on_source_start(name: str, source_type: str) -> None:
+        click.echo(f"  Scanning {name} ({source_type})...")
+
+    def _on_source_done(name: str, source_type: str, count: int) -> None:
+        click.echo(f"    {count:,} files found")
+
+    candidates = list(scan_all(
+        cfg,
+        verbose=verbose,
+        on_source_start=_on_source_start if not quiet else None,
+        on_source_done=_on_source_done if not quiet else None,
+    ))
+
+    if not quiet:
+        click.echo(f"  Total: {len(candidates):,} candidates")
 
     if verbose:
         logger.info("Total candidates discovered: %d", len(candidates))
 
     # --- Step 5: Filter candidates via incremental skip predicate ---
+    # Fast path: one bulk SELECT loads all catalog rows into memory, then
+    # stat() calls run in parallel (same worker count as hashing).  This
+    # replaces the old approach of N sequential stat() + N individual DB
+    # queries, which was extremely slow over SMB-mounted NAS shares.
+    if not quiet:
+        click.echo(f"[2/3] Checking {len(candidates):,} candidates against catalog...")
+
+    with SessionLocal() as session:
+        skip_index = build_skip_index(session)
+
+    def _get_mtime(item: tuple[str, str, str]) -> tuple[str, str, str, float | None]:
+        path, source_name, source_type = item
+        if source_type == "local":
+            try:
+                return path, source_name, source_type, Path(path).stat().st_mtime
+            except OSError:
+                return path, source_name, source_type, None
+        return path, source_name, source_type, None
+
     survivors: list[tuple[str, str, str]] = []
     skipped = 0
 
-    with SessionLocal() as session:
-        for path, source_name, source_type in candidates:
-            # Get mtime for local files; rclone files always get None (Pitfall 6
-            # in RESEARCH.md — rclone remote mtime integration deferred to Phase 2).
-            if source_type == "local":
-                try:
-                    mtime: float | None = Path(path).stat().st_mtime
-                except OSError:
-                    mtime = None
-            else:
-                # rclone candidates: never skip in Phase 1
-                mtime = None
-
-            if mtime is not None and should_skip(session, path, mtime):
-                skipped += 1
-                if verbose:
-                    logger.info("Skipping unchanged file: %s", path)
-            else:
-                survivors.append((path, source_name, source_type))
+    with ThreadPoolExecutor(max_workers=cfg.hashing_max_workers) as pool:
+        for path, source_name, source_type, mtime in pool.map(_get_mtime, candidates):
+            if mtime is not None:
+                cat_mtime, cat_status = skip_index.get(path, (None, None))
+                if cat_status == "ok" and cat_mtime == mtime:
+                    skipped += 1
+                    if verbose:
+                        logger.info("Skipping unchanged file: %s", path)
+                    continue
+            survivors.append((path, source_name, source_type))
 
     if verbose:
         logger.info(
@@ -222,7 +251,14 @@ def _run_scan(config_path: str, verbose: bool = False, quiet: bool = False) -> d
             skipped, len(survivors),
         )
 
+    if not quiet:
+        click.echo(
+            f"  {len(survivors):,} to process, {skipped:,} unchanged (skipping)"
+        )
+
     # --- Step 6: Parallel hash + metadata (worker threads, results yielded to main thread) ---
+    if not quiet and survivors:
+        click.echo(f"[3/3] Processing {len(survivors):,} files...")
     cataloged = 0
     errored = 0
     buffer: list[dict] = []
