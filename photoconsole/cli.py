@@ -196,7 +196,7 @@ def _run_scan(config_path: str, verbose: bool = False, quiet: bool = False) -> d
         click.echo(f"  Scanning {name} ({source_type})...")
 
     def _on_source_done(name: str, source_type: str, count: int) -> None:
-        click.echo(f"    {count:,} files found")
+        click.echo(f"    {name}: {count:,} files found")
 
     candidates = list(scan_all(
         cfg,
